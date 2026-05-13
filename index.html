@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#111827">
+<title>SecondBrain</title>
+<link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiU2Vjb25kQnJhaW4iLCJzaG9ydF9uYW1lIjoiMm5kQnJhaW4iLCJzdGFydF91cmwiOiIuIiwiZGlzcGxheSI6InN0YW5kYWxvbmUiLCJiYWNrZ3JvdW5kX2NvbG9yIjoiIzExMTgyNyIsInRoZW1lX2NvbG9yIjoiIzExMTgyNyJ9">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#111827;color:#CBD5E1;font-family:'Inter',sans-serif;min-height:100vh;overflow-x:hidden}
+::-webkit-scrollbar{width:3px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#334155;border-radius:2px}
+@keyframes fadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes flashIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes recPulse{0%,100%{box-shadow:0 0 0 0 #E06C7544}70%{box-shadow:0 0 0 6px #E06C7500}}
+textarea:focus,input:focus{outline:none;border-color:#00E5A033 !important}
+button{font-family:inherit}
+.setup-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+.setup-box{background:#1E293B;border:1px solid #334155;border-radius:16px;padding:32px;max-width:440px;width:100%}
+.setup-box h1{font-family:'JetBrains Mono',monospace;font-size:20px;font-weight:600;color:#F1F5F9;margin-bottom:4px}
+.setup-box h1 span{color:#00E5A0}
+.setup-box p{color:#64748B;font-size:12px;margin-bottom:20px;line-height:1.6}
+.setup-box label{display:block;font-size:11px;color:#94A3B8;margin-bottom:4px;font-family:'JetBrains Mono',monospace}
+.setup-box input{width:100%;padding:10px 12px;background:#111827;border:1px solid #334155;border-radius:8px;color:#F1F5F9;font-size:13px;margin-bottom:14px}
+.setup-box button{width:100%;padding:10px;background:#00E5A0;color:#111827;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;margin-top:4px}
+.setup-box button:disabled{background:#334155;color:#64748B;cursor:default}
+.setup-box .alt{background:transparent;border:1px solid #334155;color:#94A3B8;margin-top:8px}
+.setup-box .err{color:#E06C75;font-size:11px;margin-bottom:10px}
+.setup-box .step{font-size:10px;color:#475569;margin-bottom:16px;line-height:1.7;font-family:'JetBrains Mono',monospace}
+.setup-box .step b{color:#94A3B8}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ─── CONFIG ───
+const TZ="Australia/Sydney";
+const CATS={todo:{l:"To-Do",i:"◆",c:"#00E5A0"},idea:{l:"Ideas",i:"△",c:"#FFB347"},memory:{l:"Memory",i:"◈",c:"#7B93DB"},parking:{l:"Parking",i:"◐",c:"#A78BFA"},calendar:{l:"Calendar",i:"◉",c:"#E06C75"},dump:{l:"Unsorted",i:"▪",c:"#64748B"}};
+const PRI={3:{l:"High",c:"#E06C75"},2:{l:"Med",c:"#FFB347"},1:{l:"Low",c:"#7B93DB"},0:{l:"",c:"#475569"}};
+const MOODS=[{k:"fired",l:"🔥",c:"#FFB347"},{k:"neutral",l:"—",c:"#64748B"},{k:"flat",l:"▿",c:"#7B93DB"},{k:"stressed",l:"⚡",c:"#E06C75"}];
+const DOW=["Mon","Tue","Wed","Thu","Fri","Sat","Sun"];
+
+// ─── HELPERS ───
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const daysAgo=ts=>Math.floor((Date.now()-ts)/864e5);
+function sydneyNow(){const p=new Intl.DateTimeFormat("en-AU",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hour12:false}).formatToParts(new Date());const g=t=>p.find(x=>x.type===t)?.value||"";return{year:+g("year"),month:+g("month"),day:+g("day"),hour:+g("hour"),min:+g("minute")}}
+function sydneyDate(){const s=sydneyNow();return new Date(s.year,s.month-1,s.day)}
+function isoDate(d){return new Intl.DateTimeFormat("en-CA",{timeZone:TZ,year:"numeric",month:"2-digit",day:"2-digit"}).format(d)}
+function getMonday(d){const dt=new Date(d);const day=dt.getDay();const diff=dt.getDate()-day+(day===0?-6:1);dt.setDate(diff);dt.setHours(0,0,0,0);return dt}
+function addDays(d,n){const r=new Date(d);r.setDate(r.getDate()+n);return r}
+function fmtDate(d){const M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return`${d.getDate()} ${M[d.getMonth()]}`}
+function dowFromDate(d){return DOW[d.getDay()===0?6:d.getDay()-1]}
+
+// ─── LINKING ───
+const STOP=new Set("i the a an to and is it of for in on my me that this was with but not have do be at so if or up out got get just about can we our its had has been are were will would could should from they them what when where how all each which their there then than also very more some any no into over after before need really think want like know make going thing things doing done time good back way well much take come look work still here most find day made keep say went every around being never".split(" "));
+const sigWords=t=>t.toLowerCase().replace(/[^a-z\s]/g,"").split(/\s+/).filter(w=>w.length>3&&!STOP.has(w));
+function findLinked(item,all){const ws=new Set(sigWords(item.text));if(ws.size<2)return[];return all.filter(o=>o.id!==item.id).map(o=>({item:o,score:sigWords(o.text).filter(w=>ws.has(w)).length})).filter(r=>r.score>=2).sort((a,b)=>b.score-a.score).slice(0,2)}
+function findContras(item,all){const lo=item.text.toLowerCase();const CP=[[["more","increase","post more","start","commit"],["less","reduce","cut back","stop","quit","slow down","too much"]],[["focus","narrow","specialize"],["diversify","expand","broaden","multiple"]]];const res=[];for(const[gA,gB]of CP){const mA=gA.some(w=>lo.includes(w));const mB=gB.some(w=>lo.includes(w));if(!mA&&!mB)continue;for(const o of all){if(o.id===item.id)continue;const olo=o.text.toLowerCase();if(sigWords(item.text).filter(w=>sigWords(o.text).includes(w)).length<1)continue;if(mA&&gB.some(w=>olo.includes(w)))res.push({item:o});if(mB&&gA.some(w=>olo.includes(w)))res.push({item:o})}}return res.slice(0,2)}
+
+// ─── FALLBACK CLASSIFIER ───
+const KW={todo:["todo","to-do","to do","need to","must","should","have to","gotta","buy","fix","finish","complete","submit","send","call","book","task","deadline","asap","urgent","pick up","pay","cancel","order","return","clean","organize","update","check","make","set up","follow up","chase","apply","sign up"],idea:["idea","what if","maybe","could try","concept","brainstorm","imagine","strategy","plan","framework","pitch","business","product","feature","design","brand","content","campaign","opportunity","explore","experiment","launch","build","partnership","collab","monetize","niche"],calendar:["monday","tuesday","wednesday","thursday","friday","saturday","sunday","morning","afternoon","evening","tomorrow","routine","gym","workout","meeting","appointment","session","class","schedule","remind","reminder","calendar"],memory:["remember","memory","forgot","recall","happened","realized","learned","discovered","noticed","felt","insight","reflection","journal","yesterday","last week","interesting","grateful","proud","lesson","milestone"],parking:["someday","eventually","later","one day","when i have time","backburner","not yet","future","long term","bucket list","dream","aspirational"]};
+function fallbackClassify(t){const lo=t.toLowerCase();if(["put a reminder","add to calendar","remind me to","set a reminder"].some(p=>lo.includes(p)))return"calendar";let sc={};for(const c of Object.keys(KW))sc[c]=0;for(const[c,ws]of Object.entries(KW))for(const w of ws)if(lo.includes(w))sc[c]++;const mx=Math.max(...Object.values(sc));if(mx===0)return"dump";return Object.entries(sc).find(([,v])=>v===mx)[0]}
+
+// ─── STATE ───
+let state={
+  user:null,sb:null,apiKey:"",
+  items:[],events:[],meta:{streakDays:[],reviewHistory:[],graveyard:[]},projects:[],
+  txt:"",dumpMode:"dump",mood:null,processing:false,recording:false,interim:"",
+  rightTab:"calendar",editId:null,editTxt:"",
+  weekStart:getMonday(sydneyDate()),calDay:isoDate(sydneyDate()),calIn:"",calTime:"",
+  flash:null,schedSuggestions:[],
+  rStep:0,rItems:[],rDec:{},collision:null,
+  digest:null,digestLoading:false,
+  expandingIdea:null,ideaExpansion:{},openExpansions:{},expandLinked:{},
+  chatItem:null,chatHistory:[],chatInput:"",chatLoading:false,
+  emailItems:[],emailLoading:false,
+  captureText:"",
+  activeProjectFilter:null,showNewProject:false,newProjName:"",newProjKeywords:"",newProjColor:"#00E5A0",
+  // Setup
+  setupStep:"loading",supaUrl:"",supaKey:"",setupEmail:"",setupPass:"",setupErr:"",
+};
+
+let recognRef=null;
+const app=document.getElementById("app");
+
+function set(patch){Object.assign(state,patch);render()}
+function fl(msg){set({flash:msg});setTimeout(()=>set({flash:null}),3000)}
+
+// ─── SUPABASE ───
+function initSupabase(){
+  const url=localStorage.getItem("sb_url");
+  const key=localStorage.getItem("sb_key");
+  const api=localStorage.getItem("sb_api_key");
+  if(!url||!key){set({setupStep:"config"});return}
+  state.supaUrl=url;state.supaKey=key;state.apiKey=api||"";
+  state.sb=window.supabase.createClient(url,key);
+  checkAuth();
+}
+
+async function checkAuth(){
+  const{data}=await state.sb.auth.getSession();
+  if(data.session){state.user=data.session.user;await loadData();set({setupStep:"ready"})}
+  else set({setupStep:"auth"});
+}
+
+async function signUp(){
+  set({setupErr:""});
+  const{error}=await state.sb.auth.signUp({email:state.setupEmail,password:state.setupPass});
+  if(error)set({setupErr:error.message});
+  else{set({setupErr:""});await signIn()}
+}
+
+async function signIn(){
+  set({setupErr:""});
+  const{data,error}=await state.sb.auth.signInWithPassword({email:state.setupEmail,password:state.setupPass});
+  if(error)set({setupErr:error.message});
+  else{state.user=data.session.user;await ensureTables();await loadData();set({setupStep:"ready"})}
+}
+
+async function signOut(){
+  await state.sb.auth.signOut();
+  state.user=null;state.items=[];state.events=[];state.projects=[];
+  set({setupStep:"auth"});
+}
+
+async function ensureTables(){
+  // Tables created via Supabase dashboard SQL — this just checks data exists
+  const tables=["sb_items","sb_events","sb_meta","sb_projects"];
+  for(const t of tables){
+    try{await state.sb.from(t).select("id").limit(1)}
+    catch(e){console.log(`Table ${t} may need creation`,e)}
+  }
+}
+
+async function loadData(){
+  const uid=state.user.id;
+  const[{data:items},{data:events},{data:meta},{data:projects}]=await Promise.all([
+    state.sb.from("sb_items").select("*").eq("user_id",uid).order("created",{ascending:false}),
+    state.sb.from("sb_events").select("*").eq("user_id",uid),
+    state.sb.from("sb_meta").select("*").eq("user_id",uid).limit(1),
+    state.sb.from("sb_projects").select("*").eq("user_id",uid),
+  ]);
+  state.items=items||[];
+  state.events=events||[];
+  state.meta=(meta&&meta[0]?.data)||{streakDays:[],reviewHistory:[],graveyard:[]};
+  state.projects=projects||[];
+}
+
+async function saveItem(item){
+  item.user_id=state.user.id;
+  await state.sb.from("sb_items").upsert(item,{onConflict:"id"});
+}
+async function deleteItem(id){
+  await state.sb.from("sb_items").delete().eq("id",id);
+  state.items=state.items.filter(i=>i.id!==id);render();
+}
+async function saveEvent(evt){
+  evt.user_id=state.user.id;
+  await state.sb.from("sb_events").upsert(evt,{onConflict:"id"});
+}
+async function deleteEvent(id){
+  await state.sb.from("sb_events").delete().eq("id",id);
+  state.events=state.events.filter(e=>e.id!==id);render();
+}
+async function saveMeta(){
+  await state.sb.from("sb_meta").upsert({id:state.user.id+"_meta",user_id:state.user.id,data:state.meta},{onConflict:"id"});
+}
+async function saveProject(proj){
+  proj.user_id=state.user.id;
+  await state.sb.from("sb_projects").upsert(proj,{onConflict:"id"});
+}
+async function deleteProjectDb(id){
+  await state.sb.from("sb_projects").delete().eq("id",id);
+  state.projects=state.projects.filter(p=>p.id!==id);render();
+}
+
+// ─── AI CALLS ───
+const REFINE_RULES=`STRICT refinement rules per category:
+• todo: Verb-first, max 8 words. "Call dentist (tomorrow)" / "Finish pitch deck by Wed"
+• idea: Core concept only, strip preamble, 3-8 words. "AI workflow tools social page"
+• memory: Insight-first, max 8 words. "Shorter reels → more saves"
+• parking: Clean future statement. "Build home gym"
+• calendar: Activity only. "Coffee with Jake" / "Legs session"
+• dump: Clean it up, keep short.`;
+
+async function aiCall(system,userMsg,maxTokens=2000){
+  if(!state.apiKey)return null;
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":state.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,system,messages:[{role:"user",content:userMsg}]})
+    });
+    const d=await r.json();
+    if(d.error)throw new Error(d.error.message);
+    return d.content?.map(c=>c.text||"").join("")||"";
+  }catch(e){console.error("AI error:",e);return null}
+}
+
+async function aiProcess(lines,mode,todayStr){
+  const calCtx=state.events.slice(0,20).map(e=>`${e.date||e.day_of_week||"?"} ${e.time||""} ${e.text}`).join("\n");
+  const histCtx=state.items.slice(0,15).map(i=>`[${i.category}${i.project_name?"/"+i.project_name:""}] ${i.refined||i.text}`).join("\n");
+  const projCtx=state.projects.filter(p=>p.status==="active").map(p=>`"${p.name}" (keywords: ${(p.keywords||[]).join(", ")})`).join("\n");
+  const modeCtx=mode==="setday"?"User is PLANNING their day. Weight toward action items, calendar, priorities."
+    :mode==="debrief"?`User is REFLECTING (DEBRIEF MODE). CRITICAL:
+1. SPLIT flowing paragraphs into individual items. Each verb/action = separate item.
+2. COMPLETED ACTIONS (past tense: "I did X","payed X","made X","checked X","was able to X") → todo with "auto_done":true
+3. PARTIAL COMPLETIONS ("did X but still need Y") → TWO items: one done + one new active
+4. FOLLOW-UP ACTIONS ("I still need to","tomorrow I should") → NEW active todos or calendar entries
+5. CALENDAR EXTRACTION ("need to go to X tomorrow") → calendar with correct dates
+6. REFLECTIONS ("today went well","realized X") → memory
+7. One paragraph can produce 5-10 items. DO NOT compress.`
+    :"User is doing a raw BRAIN DUMP. Classify naturally.";
+  const sys=`Intelligence layer for brain dump app. Today: ${todayStr}. Sydney AEST/AEDT.
+${modeCtx}
+
+RECENT HISTORY:\n${histCtx||"(none)"}
+CALENDAR:\n${calCtx||"(empty)"}
+PROJECTS:\n${projCtx||"(none)"}
+
+Return ONLY JSON array. One line can produce MULTIPLE items. Each:
+- "source_line": number, "original": text, "category": "todo"|"idea"|"memory"|"parking"|"calendar"|"dump"
+- "project": project name or null, "refined": rewritten per rules, "confidence": 0-1
+- "auto_done": true only for completed todos in debrief. Default false.
+- "calendar": only if calendar. {"dates":["YYYY-MM-DD"],"time":"HH:MM" or null,"recurring":"weekly" or null,"activity":"text"}
+- "schedule_suggestion": for time-sensitive todos. {"suggested_date":"YYYY-MM-DD","suggested_time":"HH:MM" or null,"reasoning":"5-10 words"}
+${REFINE_RULES}
+MULTI-SIGNAL: split multi-action sentences. CONTEXT-AWARE: resolve references using history.
+ONLY the JSON array.`;
+  const raw=await aiCall(sys,lines.map((l,i)=>`${i+1}. ${l}`).join("\n"),3000);
+  if(!raw)return null;
+  try{return JSON.parse(raw.replace(/```json|```/g,"").trim())}catch{return null}
+}
+
+async function aiExpandIdea(text){
+  const raw=await aiCall(`Expand ideas into briefs. Return ONLY JSON: {"concept":"1-2 sentences","audience":"who","steps":["s1","s2","s3"],"challenges":["c1","c2"],"potential":"why this matters"}`,"Expand: "+text,1000);
+  if(!raw)return null;try{return JSON.parse(raw.replace(/```json|```/g,"").trim())}catch{return null}
+}
+
+async function aiDigest(){
+  const done=state.items.filter(i=>i.category==="todo"&&i.done);const active=state.items.filter(i=>i.category==="todo"&&!i.done);
+  const summary=`DONE(${done.length}):${done.map(i=>i.refined||i.text).join("; ")||"none"}\nACTIVE(${active.length}):${active.map(i=>i.refined||i.text).join("; ")||"none"}\nIDEAS(${state.items.filter(i=>i.category==="idea").length})\nEVENTS:${state.events.slice(0,10).map(e=>e.text).join("; ")||"none"}`;
+  const raw=await aiCall(`Concise weekly digest. Direct, honest. Under 120 words. Return ONLY JSON: {"summary":"text","focusItems":["f1","f2"],"observation":"one insight"}`,summary,800);
+  if(!raw)return null;try{return JSON.parse(raw.replace(/```json|```/g,"").trim())}catch{return null}
+}
+
+async function aiChat(userMsg){
+  const ci=state.chatItem;if(!ci)return"No item selected";
+  const linked=findLinked(ci,state.items).map(r=>(r.item.refined||r.item.text)).join("; ");
+  const ctx=`Related: ${linked||"none"}. Active todos: ${state.items.filter(i=>i.category==="todo"&&!i.done).slice(0,5).map(i=>i.refined||i.text).join("; ")}`;
+  const sys=`Thinking partner. Discussing ${ci.category}: "${ci.refined||ci.text}"\nContext: ${ctx}\nBe concise, direct, practical. Challenge assumptions.`;
+  const msgs=state.chatHistory.map(h=>({role:h.role,content:h.content}));
+  msgs.push({role:"user",content:userMsg});
+  if(!state.apiKey)return"No API key set";
+  try{
+    const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
+      headers:{"Content-Type":"application/json","x-api-key":state.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,system:sys,messages:msgs})
+    });const d=await r.json();return d.content?.map(c=>c.text||"").join("")||"No response";
+  }catch{return"AI unavailable"}
+}
+
+// ─── CORE ACTIONS ───
+const todayStr=isoDate(sydneyDate());
+const ghosts=()=>new Set(state.items.filter(i=>i.category==="todo"&&!i.done&&daysAgo(i.created)>=14&&(i.rs||0)>=2).map(i=>i.id));
+const filtered=cat=>{let l=state.items.filter(i=>i.category===cat);if(state.activeProjectFilter==="_none")l=l.filter(i=>!i.project_id);else if(state.activeProjectFilter)l=l.filter(i=>i.project_id===state.activeProjectFilter);return l};
+const eventsForDay=date=>{const ds=isoDate(date);const dow=dowFromDate(date);return state.events.filter(e=>(e.date===ds)||(!e.date&&e.recurring&&e.day_of_week===dow)).sort((a,b)=>(a.time||"99").localeCompare(b.time||"99"))};
+const weekDays=()=>Array.from({length:7},(_,i)=>addDays(state.weekStart,i));
+const projName=id=>state.projects.find(p=>p.id===id)?.name||null;
+const projColor=id=>state.projects.find(p=>p.id===id)?.color||"#64748B";
+const projStats=pid=>{const pi=state.items.filter(i=>i.project_id===pid);return{total:pi.length,todos:pi.filter(i=>i.category==="todo"&&!i.done).length,done:pi.filter(i=>i.done).length,ideas:pi.filter(i=>i.category==="idea").length}};
+const streak=()=>{let c=0,d=new Date();const sd=state.meta.streakDays||[];while(true){const s=isoDate(d);if(sd.includes(s)){c++;d.setDate(d.getDate()-1)}else if(c===0&&s===todayStr){d.setDate(d.getDate()-1)}else break}return c};
+
+async function handleDump(){
+  if(!state.txt.trim()||state.processing)return;
+  const lines=state.txt.split("\n").filter(l=>l.trim()).map(l=>l.trim());
+  set({processing:true,txt:""});
+  const aiResult=await aiProcess(lines,state.dumpMode,todayStr);
+  let newItems=[];let newEvents=[];let calAdded=0;let newSuggs=[];
+  if(aiResult&&Array.isArray(aiResult)){
+    for(const r of aiResult){
+      const orig=r.original||"";const cat=["todo","idea","memory","parking","calendar","dump"].includes(r.category)?r.category:"dump";
+      const projMatch=r.project?state.projects.find(p=>p.name.toLowerCase()===r.project.toLowerCase()):null;
+      const isDone=r.auto_done===true;
+      const item={id:uid(),text:orig,refined:r.refined||orig,category:cat,project_id:projMatch?.id||null,project_name:projMatch?.name||null,created:Date.now(),done:isDone,priority:0,rs:0,mood:state.mood,mode:state.dumpMode,confidence:r.confidence||1};
+      if(cat==="calendar"&&r.calendar){
+        const cal=r.calendar;const activity=cal.activity||r.refined||orig;
+        if(cal.recurring==="weekly"&&cal.dates?.length>0){
+          const d=new Date(cal.dates[0]+"T12:00:00");
+          const evt={id:uid(),text:activity,day_of_week:dowFromDate(d),time:cal.time||null,recurring:true,date:null};
+          newEvents.push(evt);calAdded++;
+        }else{
+          for(const dt of(cal.dates||[])){
+            const evt={id:uid(),text:activity,date:dt,time:cal.time||null,recurring:false,day_of_week:null};
+            newEvents.push(evt);calAdded++;
+          }
+        }
+      }else if(cat==="todo"&&!isDone&&r.schedule_suggestion){
+        const ss=r.schedule_suggestion;
+        newSuggs.push({id:uid(),itemId:item.id,refined:r.refined||orig,suggested_date:ss.suggested_date,suggested_time:ss.suggested_time||null,reasoning:ss.reasoning||""});
+      }
+      newItems.push(item);
+    }
+  }else{
+    for(const line of lines)newItems.push({id:uid(),text:line,refined:line,category:fallbackClassify(line),project_id:null,project_name:null,created:Date.now(),done:false,priority:0,rs:0,mood:state.mood,mode:state.dumpMode,confidence:0});
+  }
+  // Save to Supabase
+  for(const item of newItems)await saveItem(item);
+  for(const evt of newEvents)await saveEvent(evt);
+  state.items=[...newItems,...state.items];
+  state.events=[...state.events,...newEvents];
+  // Streak
+  const sd=state.meta.streakDays||[];
+  if(!sd.includes(todayStr)){sd.push(todayStr);state.meta.streakDays=sd.slice(-90);await saveMeta()}
+  const doneCount=newItems.filter(i=>i.done).length;
+  const extras=[];if(doneCount>0)extras.push(`${doneCount} completed ✓`);if(calAdded>0)extras.push(`${calAdded} to calendar`);
+  set({processing:false,mood:null,schedSuggestions:[...newSuggs,...state.schedSuggestions]});
+  if(calAdded>0)set({rightTab:"calendar"});
+  fl(`${newItems.length} item${newItems.length>1?"s":""} processed${extras.length?" · "+extras.join(" · "):""}`);
+}
+
+async function toggleItem(id){
+  const item=state.items.find(i=>i.id===id);if(!item)return;
+  item.done=!item.done;await saveItem(item);render();
+}
+async function recatItem(id,cat){
+  const item=state.items.find(i=>i.id===id);if(!item)return;
+  item.category=cat;await saveItem(item);render();
+}
+async function setPriItem(id,p){
+  const item=state.items.find(i=>i.id===id);if(!item)return;
+  item.priority=item.priority===p?0:p;await saveItem(item);render();
+}
+async function saveEditItem(){
+  const item=state.items.find(i=>i.id===state.editId);if(!item)return;
+  item.refined=state.editTxt;item.text=state.editTxt;await saveItem(item);set({editId:null});
+}
+async function toggleEvent(id){
+  const evt=state.events.find(e=>e.id===id);if(!evt)return;
+  evt.done=!evt.done;await saveEvent(evt);render();
+}
+function acceptSched(s){
+  const evt={id:uid(),text:s.refined,date:s.suggested_date,time:s.suggested_time,recurring:false,day_of_week:null};
+  state.events.push(evt);saveEvent(evt);
+  state.schedSuggestions=state.schedSuggestions.filter(x=>x.id!==s.id);
+  render();fl(`Scheduled: ${s.refined}`);
+}
+
+// ─── VOICE ───
+function toggleVoice(){
+  if(state.recording){recognRef?.stop();set({recording:false});return}
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){fl("Speech recognition not supported");return}
+  const r=new SR();r.continuous=true;r.interimResults=true;r.lang="en-AU";
+  r.onresult=e=>{let final="",inter="";for(let i=e.resultIndex;i<e.results.length;i++){if(e.results[i].isFinal)final+=e.results[i][0].transcript;else inter=e.results[i][0].transcript}if(final){state.txt+=(state.txt?"\n":"")+final;render()}state.interim=inter;render()};
+  r.onerror=()=>{set({recording:false});fl("Voice error")};
+  r.onend=()=>set({recording:false});
+  r.start();recognRef=r;set({recording:true});
+}
+
+// ─── RENDER ───
+function h(tag,attrs,...children){
+  const el=document.createElement(tag);
+  if(attrs)for(const[k,v]of Object.entries(attrs)){
+    if(k==="style"&&typeof v==="object"){Object.assign(el.style,v)}
+    else if(k.startsWith("on")){el.addEventListener(k.slice(2).toLowerCase(),v)}
+    else if(k==="value"){el.value=v}
+    else if(k==="checked"){el.checked=v}
+    else if(k==="disabled"){if(v)el.setAttribute("disabled","true")}
+    else if(k==="selected"){if(v)el.selected=true}
+    else if(k==="placeholder"){el.placeholder=v}
+    else if(k==="type"){el.type=v}
+    else if(k==="htmlFor"){el.htmlFor=v}
+    else if(k==="className"){el.className=v}
+    else el.setAttribute(k,v);
+  }
+  for(const c of children){
+    if(c==null||c===false)continue;
+    if(typeof c==="string"||typeof c==="number")el.appendChild(document.createTextNode(c));
+    else if(Array.isArray(c))c.forEach(x=>{if(x)el.appendChild(x)});
+    else el.appendChild(c);
+  }
+  return el;
+}
+
+function render(){
+  const s=state;
+  app.innerHTML="";
+
+  // ─── SETUP SCREENS ───
+  if(s.setupStep==="loading"){
+    app.appendChild(h("div",{className:"setup-wrap"},h("div",{style:{textAlign:"center",fontFamily:"'JetBrains Mono',monospace"}},h("div",{style:{fontSize:"28px",color:"#00E5A0"}},"◈"),h("div",{style:{fontSize:"10px",color:"#475569",marginTop:"10px",letterSpacing:"3px"}},"LOADING"))));
+    return;
+  }
+
+  if(s.setupStep==="config"){
+    const box=h("div",{className:"setup-wrap"},
+      h("div",{className:"setup-box"},
+        h("h1",null,"SECOND",h("span",null,"BRAIN")),
+        h("p",null,"First-time setup. You need three things: a Supabase project (free), a Supabase anon key, and an Anthropic API key for the AI features."),
+        h("div",{className:"step"},
+          h("b",null,"Step 1:"),` Go to supabase.com → sign up free → New Project`,h("br"),
+          h("b",null,"Step 2:"),` In your project, go to Settings → API → copy the URL and anon/public key`,h("br"),
+          h("b",null,"Step 3:"),` Go to SQL Editor and run the setup SQL (see instructions below)`,h("br"),
+          h("b",null,"Step 4:"),` Get your Anthropic API key from console.anthropic.com`,
+        ),
+        h("label",null,"Supabase URL"),
+        h("input",{value:s.supaUrl,placeholder:"https://xxxxx.supabase.co",onInput:e=>state.supaUrl=e.target.value}),
+        h("label",null,"Supabase Anon Key"),
+        h("input",{value:s.supaKey,placeholder:"eyJhbGci...",onInput:e=>state.supaKey=e.target.value}),
+        h("label",null,"Anthropic API Key"),
+        h("input",{value:s.apiKey,placeholder:"sk-ant-...",onInput:e=>state.apiKey=e.target.value}),
+        s.setupErr?h("div",{className:"err"},s.setupErr):null,
+        h("button",{disabled:!s.supaUrl||!s.supaKey,onClick:()=>{
+          localStorage.setItem("sb_url",state.supaUrl);
+          localStorage.setItem("sb_key",state.supaKey);
+          localStorage.setItem("sb_api_key",state.apiKey);
+          initSupabase();
+        }},"Save & Continue"),
+        h("details",{style:{marginTop:"16px"}},
+          h("summary",{style:{fontSize:"10px",color:"#475569",cursor:"pointer",fontFamily:"'JetBrains Mono',monospace"}},"SQL Setup — run this in Supabase SQL Editor"),
+          h("pre",{style:{fontSize:"9px",color:"#94A3B8",background:"#111827",padding:"12px",borderRadius:"8px",marginTop:"8px",overflow:"auto",whiteSpace:"pre-wrap",lineHeight:"1.6"}},
+`-- Run this in Supabase SQL Editor (one time)
+create table if not exists sb_items (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  text text,
+  refined text,
+  category text default 'dump',
+  project_id text,
+  project_name text,
+  created bigint,
+  done boolean default false,
+  priority int default 0,
+  rs int default 0,
+  mood text,
+  mode text,
+  confidence real default 1,
+  auto_done boolean default false
+);
+
+create table if not exists sb_events (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  text text,
+  date text,
+  day_of_week text,
+  time text,
+  recurring boolean default false,
+  done boolean default false
+);
+
+create table if not exists sb_meta (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  data jsonb default '{}'
+);
+
+create table if not exists sb_projects (
+  id text primary key,
+  user_id uuid references auth.users not null,
+  name text,
+  keywords text[] default '{}',
+  color text default '#00E5A0',
+  status text default 'active',
+  created bigint
+);
+
+-- Enable Row Level Security
+alter table sb_items enable row level security;
+alter table sb_events enable row level security;
+alter table sb_meta enable row level security;
+alter table sb_projects enable row level security;
+
+-- Policies: users can only see their own data
+create policy "Users see own items" on sb_items for all using (auth.uid() = user_id);
+create policy "Users see own events" on sb_events for all using (auth.uid() = user_id);
+create policy "Users see own meta" on sb_meta for all using (auth.uid() = user_id);
+create policy "Users see own projects" on sb_projects for all using (auth.uid() = user_id);`)
+        ),
+      )
+    );
+    app.appendChild(box);return;
+  }
+
+  if(s.setupStep==="auth"){
+    app.appendChild(h("div",{className:"setup-wrap"},
+      h("div",{className:"setup-box"},
+        h("h1",null,"SECOND",h("span",null,"BRAIN")),
+        h("p",null,"Sign in or create an account to sync your brain across devices."),
+        h("label",null,"Email"),
+        h("input",{type:"email",value:s.setupEmail,placeholder:"you@email.com",onInput:e=>state.setupEmail=e.target.value}),
+        h("label",null,"Password"),
+        h("input",{type:"password",value:s.setupPass,placeholder:"••••••••",onInput:e=>state.setupPass=e.target.value,onKeydown:e=>{if(e.key==="Enter")signIn()}}),
+        s.setupErr?h("div",{className:"err"},s.setupErr):null,
+        h("button",{onClick:signIn},"Sign In"),
+        h("button",{className:"alt",onClick:signUp},"Create Account"),
+        h("button",{className:"alt",style:{color:"#475569",borderColor:"#1E293B"},onClick:()=>set({setupStep:"config"})},"Change Settings"),
+      )
+    ));return;
+  }
+
+  // ─── MAIN APP ───
+  const mob=window.innerWidth<=760;
+  const wrap=h("div",{style:{display:"flex",flexDirection:mob?"column":"row",minHeight:"100vh"}});
+
+  // Flash
+  if(s.flash){
+    const flashEl=h("div",{style:{position:"fixed",top:"14px",left:"50%",transform:"translateX(-50%)",zIndex:"2000",background:"#1E293B",color:"#00E5A0",padding:"8px 20px",borderRadius:"8px",fontSize:"11px",fontWeight:"500",animation:"flashIn .25s ease",border:"1px solid #00E5A022"}},s.flash);
+    app.appendChild(flashEl);
+  }
+
+  // ═══ LEFT PANEL ═══
+  const left=h("div",{style:{width:mob?"100%":"60%",minHeight:mob?"auto":"100vh",padding:mob?"14px":"24px 28px 20px",display:"flex",flexDirection:"column",borderRight:mob?"none":"1px solid #1E293B",overflowY:"auto",maxHeight:mob?"none":"100vh"}});
+
+  // Header
+  const header=h("div",{style:{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:"12px"}});
+  const hLeft=h("div",null,
+    h("div",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:mob?"13px":"15px",fontWeight:"600",color:"#F1F5F9"}},"SECOND",h("span",{style:{color:"#00E5A0"}},"BRAIN")),
+    h("div",{style:{display:"flex",gap:"8px",marginTop:"3px"}},
+      h("span",{style:{fontSize:"10px",color:"#475569",fontFamily:"'JetBrains Mono',monospace"}},s.items.length+" entries"),
+      streak()>0?h("span",{style:{fontSize:"10px",color:"#FFB347"}},"🔥"+streak()+"d"):null,
+      ghosts().size>0?h("span",{style:{fontSize:"10px",color:"#E06C75"}},"👻"+ghosts().size):null,
+    )
+  );
+  const hRight=h("div",{style:{display:"flex",gap:"4px",alignItems:"center"}},
+    ...MOODS.map(m=>h("button",{onClick:()=>set({mood:s.mood===m.k?null:m.k}),style:{width:"28px",height:"28px",borderRadius:"50%",border:"none",cursor:"pointer",fontSize:"12px",background:s.mood===m.k?m.c+"1A":"transparent",color:s.mood===m.k?m.c:"#475569",display:"flex",alignItems:"center",justifyContent:"center"},title:m.k},m.l)),
+    h("button",{onClick:signOut,style:{padding:"3px 8px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#475569",fontSize:"8px",cursor:"pointer",marginLeft:"8px"}},"Sign Out"),
+  );
+  header.appendChild(hLeft);header.appendChild(hRight);left.appendChild(header);
+
+  // Mode tabs
+  const modes=[{k:"dump",l:"Dump"},{k:"setday",l:"Set the Day"},{k:"debrief",l:"Debrief"}];
+  const modeBar=h("div",{style:{display:"flex",gap:"0",marginBottom:"12px"}});
+  modes.forEach((m,i)=>{
+    modeBar.appendChild(h("button",{onClick:()=>set({dumpMode:m.k}),style:{flex:"1",padding:"8px 4px",fontSize:mob?"10px":"11px",fontWeight:s.dumpMode===m.k?"600":"400",cursor:"pointer",background:s.dumpMode===m.k?"#1E293B":"transparent",color:s.dumpMode===m.k?"#F1F5F9":"#475569",border:`1px solid ${s.dumpMode===m.k?"#334155":"#1E293B"}`,borderRadius:i===0?"6px 0 0 6px":i===2?"0 6px 6px 0":"0",letterSpacing:"0.2px"}},m.l));
+  });
+  left.appendChild(modeBar);
+
+  // Debrief: morning items
+  if(s.dumpMode==="debrief"){
+    const morning=s.items.filter(i=>i.mode==="setday"&&new Date(i.created).toISOString().slice(0,10)===todayStr&&i.category==="todo"&&!i.done);
+    if(morning.length>0){
+      const mb=h("div",{style:{padding:"10px 12px",background:"#1E293B",borderRadius:"8px",marginBottom:"10px",border:"1px solid #334155"}});
+      mb.appendChild(h("div",{style:{fontSize:"9px",color:"#F0883E",fontFamily:"'JetBrains Mono',monospace",marginBottom:"5px",letterSpacing:"1px"}},"THIS MORNING'S PLAN"));
+      morning.forEach(i=>{
+        const row=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",padding:"3px 0"}});
+        row.appendChild(h("button",{onClick:()=>toggleItem(i.id),style:{width:"12px",height:"12px",borderRadius:"2px",border:`1.5px solid ${i.done?"#00E5A0":"#475569"}`,background:i.done?"#00E5A0":"transparent",cursor:"pointer",flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center",color:"#111827",fontSize:"7px"}},i.done?"✓":""));
+        row.appendChild(h("span",{style:{fontSize:"11px",color:i.done?"#475569":"#94A3B8",textDecoration:i.done?"line-through":"none"}},i.refined||i.text));
+        mb.appendChild(row);
+      });
+      left.appendChild(mb);
+    }
+  }
+
+  // Set the Day: today's calendar
+  if(s.dumpMode==="setday"){
+    const today=sydneyDate();const todayEvents=eventsForDay(today);
+    const sb=h("div",{style:{padding:"10px 12px",background:"#1E293B",borderRadius:"8px",marginBottom:"10px",border:"1px solid #334155"}});
+    sb.appendChild(h("div",{style:{fontSize:"9px",color:"#E06C75",fontFamily:"'JetBrains Mono',monospace",marginBottom:"5px",letterSpacing:"1px"}},"TODAY'S CALENDAR"));
+    if(todayEvents.length===0)sb.appendChild(h("span",{style:{fontSize:"10px",color:"#475569"}},"Nothing scheduled"));
+    todayEvents.forEach(e=>{
+      const row=h("div",{style:{display:"flex",gap:"6px",padding:"2px 0",fontSize:"11px",color:"#94A3B8"}});
+      if(e.time)row.appendChild(h("span",{style:{color:"#E06C75",fontFamily:"'JetBrains Mono',monospace",fontSize:"9px",minWidth:"36px"}},e.time));
+      row.appendChild(h("span",null,e.text));
+      sb.appendChild(row);
+    });
+    left.appendChild(sb);
+  }
+
+  // Textarea + voice
+  const taWrap=h("div",{style:{position:"relative",flex:mob?"none":"1",display:"flex",flexDirection:"column"}});
+  const taBox=h("div",{style:{position:"relative"}});
+  const placeholders={dump:"What's on your mind?\n\nOne thought per line. AI handles the rest.",setday:"What's the plan today?\n\nFinish the pitch deck before lunch\nGym at 6am\nCall Jake about the partnership",debrief:"How did today go?\n\nFinished the mockups, didn't call the dentist...\nReflect naturally — AI splits and sorts everything."};
+  const ta=h("textarea",{value:s.txt,placeholder:placeholders[s.dumpMode],disabled:s.processing,onInput:e=>{state.txt=e.target.value},onKeydown:e=>{if(e.key==="Enter"&&(e.metaKey||e.ctrlKey))handleDump()},style:{width:"100%",minHeight:mob?"120px":"160px",padding:"16px 50px 16px 16px",background:"#1E293B",border:"1px solid #334155",borderRadius:"10px",color:"#F1F5F9",fontSize:mob?"13px":"14px",fontFamily:"'Inter',sans-serif",lineHeight:"1.75",resize:"vertical",outline:"none",opacity:s.processing?"0.5":"1"}});
+  taBox.appendChild(ta);
+
+  // Voice button
+  const voiceBtn=h("button",{onClick:toggleVoice,style:{position:"absolute",top:"12px",right:"12px",width:"32px",height:"32px",borderRadius:"50%",background:s.recording?"#E06C75":"#334155",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:"14px",color:s.recording?"#fff":"#94A3B8",animation:s.recording?"recPulse 1.5s infinite":"none"},title:s.recording?"Stop":"Voice input"},"🎙");
+  taBox.appendChild(voiceBtn);
+  taWrap.appendChild(taBox);
+
+  if(s.interim){taWrap.appendChild(h("div",{style:{fontSize:"11px",color:"#64748B",fontStyle:"italic",padding:"4px 0"}},s.interim))}
+
+  // Process bar
+  const procBar=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"8px"}});
+  const modeDesc={dump:"Raw thoughts — AI sorts everything",setday:"Plan your day — actions & calendar",debrief:"Reflect — completions, carry-forwards"};
+  procBar.appendChild(h("span",{style:{fontSize:"9px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},modeDesc[s.dumpMode]));
+  procBar.appendChild(h("button",{onClick:handleDump,disabled:s.processing||!s.txt.trim(),style:{padding:"7px 24px",background:(!s.processing&&s.txt.trim())?"#00E5A0":"#334155",color:(!s.processing&&s.txt.trim())?"#111827":"#475569",border:"none",borderRadius:"8px",fontSize:"11px",fontWeight:"600",cursor:(!s.processing&&s.txt.trim())?"pointer":"default"}},s.processing?"Processing...":"Process"));
+  taWrap.appendChild(procBar);
+  left.appendChild(taWrap);
+
+  // Capture input
+  const capBar=h("div",{style:{display:"flex",gap:"4px",marginTop:"10px"}});
+  capBar.appendChild(h("input",{value:s.captureText,placeholder:"Paste a link, text, or note to capture...",onInput:e=>state.captureText=e.target.value,onKeydown:e=>{if(e.key==="Enter"&&s.captureText.trim()){state.txt+=(state.txt?"\n":"")+state.captureText.trim();state.captureText="";render();fl("Added to dump")}},style:{flex:"1",padding:"7px 10px",background:"#1E293B",border:"1px solid #334155",borderRadius:"6px",color:"#CBD5E1",fontSize:"11px",outline:"none"}}));
+  capBar.appendChild(h("button",{onClick:()=>{if(!s.captureText.trim())return;state.txt+=(state.txt?"\n":"")+state.captureText.trim();state.captureText="";render();fl("Added to dump")},style:{padding:"7px 12px",background:"#56D4DD22",border:"1px solid #56D4DD33",borderRadius:"6px",color:"#56D4DD",fontSize:"10px",cursor:"pointer",fontWeight:"600",whiteSpace:"nowrap"}},"Capture"));
+  left.appendChild(capBar);
+
+  // Schedule suggestions
+  if(s.schedSuggestions.length>0){
+    const ssBox=h("div",{style:{marginTop:"12px"}});
+    ssBox.appendChild(h("div",{style:{fontSize:"9px",color:"#F0883E",fontFamily:"'JetBrains Mono',monospace",marginBottom:"6px",letterSpacing:"1.5px"}},"SCHEDULE THESE?"));
+    s.schedSuggestions.forEach(sg=>{
+      const dt=sg.suggested_date?new Date(sg.suggested_date+"T12:00:00"):null;
+      const card=h("div",{style:{padding:"8px 10px",background:"#1E293B",borderRadius:"6px",marginBottom:"4px",border:"1px solid #F0883E15"}});
+      card.appendChild(h("div",{style:{fontSize:"12px",color:"#CBD5E1",marginBottom:"4px"}},sg.refined));
+      card.appendChild(h("div",{style:{fontSize:"10px",color:"#64748B",marginBottom:"6px"}},"→ ",h("span",{style:{color:"#F0883E"}},dt?dowFromDate(dt)+" "+fmtDate(dt):"",sg.suggested_time?" "+sg.suggested_time:"")," ",sg.reasoning));
+      const btns=h("div",{style:{display:"flex",gap:"4px"}});
+      btns.appendChild(h("button",{onClick:()=>acceptSched(sg),style:{padding:"3px 12px",background:"#00E5A0",border:"none",borderRadius:"16px",color:"#111827",fontSize:"10px",fontWeight:"600",cursor:"pointer"}},"Schedule"));
+      btns.appendChild(h("button",{onClick:()=>{state.schedSuggestions=state.schedSuggestions.filter(x=>x.id!==sg.id);render()},style:{padding:"3px 12px",border:"1px solid #334155",borderRadius:"16px",color:"#475569",fontSize:"10px",cursor:"pointer",background:"transparent"}},"Skip"));
+      card.appendChild(btns);ssBox.appendChild(card);
+    });
+    left.appendChild(ssBox);
+  }
+
+  // Recent items
+  if(s.items.length>0){
+    const rec=h("div",{style:{marginTop:"12px"}});
+    rec.appendChild(h("div",{style:{fontSize:"9px",color:"#334155",fontFamily:"'JetBrains Mono',monospace",marginBottom:"6px",letterSpacing:"2px"}},"RECENT"));
+    s.items.slice(0,mob?4:6).forEach((it,idx)=>{
+      const row=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",padding:"5px 8px",background:idx%2?"#1A2332":"transparent",borderRadius:"4px",fontSize:"11.5px",marginBottom:"1px"}});
+      row.appendChild(h("span",{style:{color:CATS[it.category]?.c||"#64748B",fontSize:"9px",flexShrink:"0"}},CATS[it.category]?.i||"▪"));
+      row.appendChild(h("span",{style:{flex:"1",color:"#94A3B8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}},it.refined||it.text));
+      row.appendChild(h("span",{style:{fontSize:"8px",color:CATS[it.category]?.c||"#64748B",fontFamily:"'JetBrains Mono',monospace",background:(CATS[it.category]?.c||"#64748B")+"0A",padding:"1px 6px",borderRadius:"10px",flexShrink:"0"}},CATS[it.category]?.l||"?"));
+      rec.appendChild(row);
+    });
+    left.appendChild(rec);
+  }
+
+  wrap.appendChild(left);
+
+  // ═══ RIGHT PANEL ═══
+  const right=h("div",{style:{width:mob?"100%":"40%",minHeight:mob?"auto":"100vh",display:"flex",flexDirection:"column",overflowY:"auto",maxHeight:mob?"none":"100vh",borderTop:mob?"1px solid #1E293B":"none"}});
+
+  // Tabs
+  const RTABS=[{k:"calendar",l:"Cal",c:"#E06C75"},{k:"todo",l:"To-Do",c:"#00E5A0"},{k:"idea",l:"Ideas",c:"#FFB347"},{k:"memory",l:"Mem",c:"#7B93DB"},{k:"parking",l:"Park",c:"#A78BFA"},{k:"projects",l:"Projects",c:"#56D4DD"},{k:"review",l:"Review",c:"#F0883E"}];
+  const tabBar=h("div",{style:{display:"flex",padding:mob?"8px 8px 0":"12px 12px 0",gap:"1px",borderBottom:"1px solid #1E293B",overflowX:"auto",flexShrink:"0"}});
+  RTABS.forEach(t=>{
+    const isA=s.rightTab===t.k;
+    tabBar.appendChild(h("button",{onClick:()=>{if(t.k==="review"){state.rItems=s.items.filter(i=>!i.done&&i.category!=="calendar");state.rDec={};state.rStep=1;state.rightTab="review";render();state.digestLoading=true;render();aiDigest().then(d=>{state.digest=d;state.digestLoading=false;render()})}else set({rightTab:t.k})},style:{padding:mob?"6px 7px":"7px 10px",fontSize:mob?"9px":"10px",cursor:"pointer",background:isA?"#1E293B":"transparent",color:isA?t.c:"#475569",border:"none",borderBottom:isA?`2px solid ${t.c}`:"2px solid transparent",fontWeight:isA?"600":"400",whiteSpace:"nowrap"}},t.l));
+  });
+  right.appendChild(tabBar);
+
+  // Tab content area
+  const content=h("div",{style:{flex:"1",padding:mob?"12px 10px":"14px 14px",overflowY:"auto"}});
+
+  // ── CALENDAR TAB ──
+  if(s.rightTab==="calendar"){
+    // Week nav
+    const nav=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}});
+    nav.appendChild(h("button",{onClick:()=>set({weekStart:addDays(s.weekStart,-7)}),style:{background:"none",border:"1px solid #334155",borderRadius:"4px",color:"#64748B",cursor:"pointer",padding:"3px 8px",fontSize:"10px"}},"‹"));
+    nav.appendChild(h("button",{onClick:()=>set({weekStart:getMonday(sydneyDate())}),style:{background:"none",border:"none",color:"#64748B",cursor:"pointer",fontSize:"10px",fontFamily:"'JetBrains Mono',monospace"}},fmtDate(s.weekStart)+" — "+fmtDate(addDays(s.weekStart,6))));
+    nav.appendChild(h("button",{onClick:()=>set({weekStart:addDays(s.weekStart,7)}),style:{background:"none",border:"1px solid #334155",borderRadius:"4px",color:"#64748B",cursor:"pointer",padding:"3px 8px",fontSize:"10px"}},"›"));
+    content.appendChild(nav);
+
+    // Add event
+    const addBar=h("div",{style:{display:"flex",gap:"4px",marginBottom:"10px",flexWrap:"wrap"}});
+    addBar.appendChild(h("input",{type:"date",value:s.calDay,onInput:e=>state.calDay=e.target.value,style:{padding:"5px 6px",background:"#1E293B",border:"1px solid #334155",borderRadius:"5px",color:"#CBD5E1",fontSize:"10px"}}));
+    addBar.appendChild(h("input",{value:s.calTime,placeholder:"Time",onInput:e=>state.calTime=e.target.value,style:{width:"55px",padding:"5px",background:"#1E293B",border:"1px solid #334155",borderRadius:"5px",color:"#CBD5E1",fontSize:"10px"}}));
+    addBar.appendChild(h("input",{value:s.calIn,placeholder:"Event...",onInput:e=>state.calIn=e.target.value,onKeydown:e=>{if(e.key==="Enter"){const evt={id:uid(),text:state.calIn.trim(),date:state.calDay,time:state.calTime||null,recurring:false,day_of_week:null};state.events.push(evt);saveEvent(evt);state.calIn="";state.calTime="";render()}},style:{flex:"1",minWidth:"60px",padding:"5px 7px",background:"#1E293B",border:"1px solid #334155",borderRadius:"5px",color:"#CBD5E1",fontSize:"10px"}}));
+    addBar.appendChild(h("button",{onClick:()=>{if(!s.calIn.trim())return;const evt={id:uid(),text:s.calIn.trim(),date:s.calDay,time:s.calTime||null,recurring:false,day_of_week:null};state.events.push(evt);saveEvent(evt);state.calIn="";state.calTime="";render()},style:{padding:"5px 10px",background:"#E06C75",border:"none",borderRadius:"5px",color:"#fff",fontSize:"10px",fontWeight:"600",cursor:"pointer"}},"Add"));
+    content.appendChild(addBar);
+
+    // Week grid
+    weekDays().forEach(date=>{
+      const ds=isoDate(date);const isT=ds===todayStr;const de=eventsForDay(date);
+      const dayCard=h("div",{style:{background:isT?"#00E5A006":"#1E293B",borderRadius:"6px",padding:"8px 10px",marginBottom:"4px",border:`1px solid ${isT?"#00E5A015":"#1E293B"}`}});
+      const dayHeader=h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:de.length?"4px":"0"}});
+      dayHeader.appendChild(h("span",{style:{fontFamily:"'JetBrains Mono',monospace",fontSize:"9px",fontWeight:"600",color:isT?"#00E5A0":"#E06C75",letterSpacing:"1px"}},dowFromDate(date)));
+      dayHeader.appendChild(h("span",{style:{fontSize:"8px",color:isT?"#00E5A066":"#475569",fontFamily:"'JetBrains Mono',monospace"}},fmtDate(date)));
+      dayCard.appendChild(dayHeader);
+      if(de.length===0)dayCard.appendChild(h("span",{style:{fontSize:"9px",color:"#1E293B"}},"—"));
+      de.forEach(e=>{
+        const row=h("div",{style:{display:"flex",gap:"5px",padding:"3px 0",borderTop:"1px solid #11182766",alignItems:"center",opacity:e.done?"0.4":"1"}});
+        row.appendChild(h("button",{onClick:()=>toggleEvent(e.id),style:{width:"12px",height:"12px",borderRadius:"2px",border:`1.5px solid ${e.done?"#00E5A0":"#475569"}`,background:e.done?"#00E5A0":"transparent",cursor:"pointer",flexShrink:"0",display:"flex",alignItems:"center",justifyContent:"center",color:"#111827",fontSize:"7px"}},e.done?"✓":""));
+        if(e.time)row.appendChild(h("span",{style:{fontSize:"9px",color:e.done?"#475569":"#E06C75",fontFamily:"'JetBrains Mono',monospace",flexShrink:"0",minWidth:"36px",textDecoration:e.done?"line-through":"none"}},e.time));
+        row.appendChild(h("span",{style:{flex:"1",fontSize:"11px",color:e.done?"#475569":"#CBD5E1",lineHeight:"1.3",textDecoration:e.done?"line-through":"none"}},e.text));
+        if(e.recurring)row.appendChild(h("span",{style:{fontSize:"7px",color:"#64748B"}},"↻"));
+        row.appendChild(h("button",{onClick:()=>deleteEvent(e.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"10px"}},"×"));
+        dayCard.appendChild(row);
+      });
+      content.appendChild(dayCard);
+    });
+  }
+
+  // ── TO-DO TAB ──
+  else if(s.rightTab==="todo"){
+    // Project filter
+    if(s.projects.length>0){
+      const fb=h("div",{style:{display:"flex",gap:"3px",marginBottom:"10px",flexWrap:"wrap"}});
+      fb.appendChild(h("button",{onClick:()=>set({activeProjectFilter:null}),style:{padding:"3px 10px",borderRadius:"16px",border:"none",cursor:"pointer",fontSize:"9px",background:!s.activeProjectFilter?"#334155":"transparent",color:!s.activeProjectFilter?"#CBD5E1":"#475569",fontWeight:!s.activeProjectFilter?"600":"400"}},"All"));
+      s.projects.filter(p=>p.status==="active").forEach(p=>{
+        fb.appendChild(h("button",{onClick:()=>set({activeProjectFilter:s.activeProjectFilter===p.id?null:p.id}),style:{padding:"3px 10px",borderRadius:"16px",border:"none",cursor:"pointer",fontSize:"9px",background:s.activeProjectFilter===p.id?p.color+"22":"transparent",color:s.activeProjectFilter===p.id?p.color:"#475569"}},p.name));
+      });
+      content.appendChild(fb);
+    }
+    const todos=filtered("todo").sort((a,b)=>{if(a.done!==b.done)return a.done-b.done;return(b.priority||0)-(a.priority||0)});
+    if(todos.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"No tasks — dump some thoughts"));
+    todos.forEach(item=>{
+      const isG=ghosts().has(item.id);
+      const row=h("div",{style:{display:"flex",alignItems:"flex-start",gap:"7px",padding:"9px 10px",borderBottom:"1px solid #1E293B",opacity:item.done?"0.3":"1",borderLeft:isG?"2px solid #E06C7533":"2px solid transparent"}});
+      row.appendChild(h("button",{onClick:()=>toggleItem(item.id),style:{width:"14px",height:"14px",borderRadius:"3px",border:`1.5px solid ${item.done?"#00E5A0":"#475569"}`,background:item.done?"#00E5A0":"transparent",cursor:"pointer",flexShrink:"0",marginTop:"2px",display:"flex",alignItems:"center",justifyContent:"center",color:"#111827",fontSize:"8px"}},item.done?"✓":""));
+      // Priority dots
+      const dots=h("div",{style:{display:"flex",gap:"2px",flexShrink:"0",marginTop:"4px"}});
+      [1,2,3].forEach(p=>{dots.appendChild(h("button",{onClick:()=>setPriItem(item.id,p),style:{width:"6px",height:"6px",borderRadius:"50%",border:"none",cursor:"pointer",background:(item.priority||0)>=p?PRI[p].c:"#334155"}}))});
+      row.appendChild(dots);
+      const info=h("div",{style:{flex:"1",minWidth:"0"}});
+      info.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{fontSize:"12.5px",color:item.done?"#475569":"#CBD5E1",textDecoration:item.done?"line-through":"none",cursor:"pointer",lineHeight:"1.5",wordBreak:"break-word"}},item.refined||item.text));
+      const meta=h("div",{style:{display:"flex",gap:"4px",marginTop:"2px",alignItems:"center",flexWrap:"wrap"}});
+      meta.appendChild(h("span",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},new Date(item.created).toLocaleDateString()));
+      if(item.project_id)meta.appendChild(h("span",{style:{fontSize:"8px",color:projColor(item.project_id),fontFamily:"'JetBrains Mono',monospace",background:projColor(item.project_id)+"15",padding:"0 5px",borderRadius:"8px"}},projName(item.project_id)));
+      if(isG)meta.appendChild(h("span",{style:{fontSize:"8px",color:"#E06C75"}},"👻"+daysAgo(item.created)+"d"));
+      info.appendChild(meta);
+      row.appendChild(info);
+      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      content.appendChild(row);
+    });
+  }
+
+  // ── IDEAS TAB ──
+  else if(s.rightTab==="idea"){
+    const ideas=filtered("idea");
+    if(ideas.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"No ideas yet"));
+    ideas.forEach(item=>{
+      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
+      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5",wordBreak:"break-word"}},item.refined||item.text));
+      const meta=h("div",{style:{display:"flex",gap:"4px",marginTop:"3px",alignItems:"center"}});
+      meta.appendChild(h("span",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},new Date(item.created).toLocaleDateString()));
+      if(item.project_id)meta.appendChild(h("span",{style:{fontSize:"8px",color:projColor(item.project_id),background:projColor(item.project_id)+"15",padding:"0 5px",borderRadius:"8px"}},projName(item.project_id)));
+      row.appendChild(meta);
+      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      content.appendChild(row);
+    });
+  }
+
+  // ── MEMORY TAB ──
+  else if(s.rightTab==="memory"){
+    const mems=filtered("memory");const unsorted=filtered("dump");
+    if(mems.length===0&&unsorted.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"No memories"));
+    mems.forEach(item=>{
+      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
+      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5"}},item.refined||item.text));
+      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      content.appendChild(row);
+    });
+    if(unsorted.length>0){
+      content.appendChild(h("div",{style:{fontSize:"9px",color:"#475569",fontFamily:"'JetBrains Mono',monospace",margin:"10px 0 4px",letterSpacing:"1.5px"}},"UNSORTED"));
+      unsorted.forEach(item=>{
+        const row=h("div",{style:{padding:"6px 10px",borderBottom:"1px solid #1E293B",fontSize:"12px",color:"#94A3B8"}},item.refined||item.text);
+        content.appendChild(row);
+      });
+    }
+  }
+
+  // ── PARKING TAB ──
+  else if(s.rightTab==="parking"){
+    const parked=filtered("parking");
+    if(parked.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"Nothing parked"));
+    parked.forEach(item=>{
+      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
+      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1"}},item.refined||item.text));
+      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      content.appendChild(row);
+    });
+  }
+
+  // ── PROJECTS TAB ──
+  else if(s.rightTab==="projects"){
+    const projHeader=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}});
+    projHeader.appendChild(h("span",{style:{fontSize:"10px",color:"#64748B"}},s.projects.length+" project"+(s.projects.length!==1?"s":"")));
+    projHeader.appendChild(h("button",{onClick:()=>set({showNewProject:!s.showNewProject}),style:{padding:"4px 12px",background:"#56D4DD15",border:"1px solid #56D4DD33",borderRadius:"16px",color:"#56D4DD",fontSize:"10px",cursor:"pointer",fontWeight:"600"}},s.showNewProject?"Cancel":"+ New"));
+    content.appendChild(projHeader);
+
+    if(s.showNewProject){
+      const form=h("div",{style:{padding:"12px 14px",background:"#1E293B",borderRadius:"8px",marginBottom:"12px",border:"1px solid #334155"}});
+      form.appendChild(h("input",{value:s.newProjName,placeholder:"Project name (e.g. STL)",onInput:e=>state.newProjName=e.target.value,style:{width:"100%",padding:"7px 10px",background:"#111827",border:"1px solid #334155",borderRadius:"6px",color:"#F1F5F9",fontSize:"12px",marginBottom:"8px"}}));
+      form.appendChild(h("input",{value:s.newProjKeywords,placeholder:"Keywords (comma separated)",onInput:e=>state.newProjKeywords=e.target.value,style:{width:"100%",padding:"7px 10px",background:"#111827",border:"1px solid #334155",borderRadius:"6px",color:"#F1F5F9",fontSize:"11px",marginBottom:"8px"}}));
+      const colors=h("div",{style:{display:"flex",gap:"4px",marginBottom:"8px",alignItems:"center"}});
+      colors.appendChild(h("span",{style:{fontSize:"10px",color:"#64748B"}},"Color:"));
+      ["#00E5A0","#FFB347","#7B93DB","#A78BFA","#E06C75","#56D4DD","#F0883E"].forEach(c=>{
+        colors.appendChild(h("button",{onClick:()=>set({newProjColor:c}),style:{width:"18px",height:"18px",borderRadius:"50%",background:c,border:s.newProjColor===c?"2px solid #F1F5F9":"2px solid transparent",cursor:"pointer"}}));
+      });
+      form.appendChild(colors);
+      form.appendChild(h("button",{disabled:!s.newProjName.trim(),onClick:async()=>{
+        const p={id:uid(),name:s.newProjName.trim(),keywords:s.newProjKeywords.split(",").map(k=>k.trim().toLowerCase()).filter(Boolean),color:s.newProjColor,status:"active",created:Date.now()};
+        state.projects.push(p);await saveProject(p);
+        set({newProjName:"",newProjKeywords:"",showNewProject:false});fl(`Project "${p.name}" created`);
+      },style:{padding:"6px 18px",background:s.newProjName.trim()?"#56D4DD":"#334155",border:"none",borderRadius:"6px",color:s.newProjName.trim()?"#111827":"#475569",fontSize:"11px",fontWeight:"600",cursor:s.newProjName.trim()?"pointer":"default"}},"Create Project"));
+      content.appendChild(form);
+    }
+
+    s.projects.forEach(p=>{
+      const stats=projStats(p.id);
+      const card=h("div",{style:{padding:"12px 14px",background:"#1E293B",borderRadius:"8px",marginBottom:"6px",border:`1px solid ${p.color}22`,borderLeft:`3px solid ${p.color}`}});
+      const cardHeader=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"6px"}});
+      const nameArea=h("div",{style:{display:"flex",alignItems:"center",gap:"6px"}});
+      nameArea.appendChild(h("span",{style:{fontSize:"14px",fontWeight:"600",color:"#F1F5F9"}},p.name));
+      nameArea.appendChild(h("span",{style:{fontSize:"8px",color:p.status==="active"?"#00E5A0":"#64748B",fontFamily:"'JetBrains Mono',monospace",background:p.status==="active"?"#00E5A012":"#33415544",padding:"1px 6px",borderRadius:"8px"}},p.status));
+      cardHeader.appendChild(nameArea);
+      const cardBtns=h("div",{style:{display:"flex",gap:"3px"}});
+      cardBtns.appendChild(h("button",{onClick:()=>set({activeProjectFilter:p.id,rightTab:"todo"}),style:{padding:"2px 8px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#64748B",fontSize:"8px",cursor:"pointer"}},"View"));
+      cardBtns.appendChild(h("button",{onClick:async()=>{p.status=p.status==="active"?"paused":"active";await saveProject(p);render()},style:{padding:"2px 8px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#64748B",fontSize:"8px",cursor:"pointer"}},p.status==="active"?"Pause":"Activate"));
+      cardBtns.appendChild(h("button",{onClick:()=>deleteProjectDb(p.id),style:{padding:"2px 6px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#475569",fontSize:"8px",cursor:"pointer"}},"×"));
+      cardHeader.appendChild(cardBtns);
+      card.appendChild(cardHeader);
+      card.appendChild(h("div",{style:{display:"flex",gap:"12px",fontSize:"10px",color:"#64748B"}},
+        h("span",null,h("span",{style:{color:"#00E5A0",fontWeight:"600"}},String(stats.todos))," to-do"),
+        h("span",null,h("span",{style:{color:"#475569"}},String(stats.done))," done"),
+        h("span",null,h("span",{style:{color:"#FFB347",fontWeight:"600"}},String(stats.ideas))," ideas"),
+      ));
+      content.appendChild(card);
+    });
+  }
+
+  // ── REVIEW TAB ──
+  else if(s.rightTab==="review"){
+    if(s.digest||s.digestLoading){
+      const dBox=h("div",{style:{padding:"10px 12px",background:"#1E293B",borderRadius:"8px",marginBottom:"12px",border:"1px solid #F0883E12"}});
+      dBox.appendChild(h("div",{style:{fontSize:"9px",color:"#F0883E",fontFamily:"'JetBrains Mono',monospace",marginBottom:"6px",letterSpacing:"1.5px"}},"WEEKLY DIGEST"));
+      if(s.digestLoading)dBox.appendChild(h("div",{style:{fontSize:"11px",color:"#475569"}},"Generating..."));
+      else if(s.digest){
+        dBox.appendChild(h("p",{style:{fontSize:"12px",color:"#94A3B8",lineHeight:"1.6",marginBottom:"6px"}},s.digest.summary));
+        if(s.digest.observation)dBox.appendChild(h("p",{style:{fontSize:"11px",color:"#F0883E",opacity:"0.7",marginBottom:"4px"}},"💡 "+s.digest.observation));
+      }
+      content.appendChild(dBox);
+    }
+
+    if(s.rStep===1){
+      content.appendChild(h("p",{style:{color:"#475569",fontSize:"10px",marginBottom:"8px"}},s.rItems.length+" items"));
+      s.rItems.forEach(item=>{
+        const dec=s.rDec[item.id];
+        const card=h("div",{style:{padding:"8px 9px",borderRadius:"6px",marginBottom:"3px",background:dec?"#1E293B":"transparent",opacity:dec?"0.5":"1"}});
+        const cardTop=h("div",{style:{display:"flex",gap:"5px",marginBottom:"5px"}});
+        cardTop.appendChild(h("span",{style:{color:CATS[item.category]?.c||"#64748B",fontSize:"8px",marginTop:"2px"}},CATS[item.category]?.i||"▪"));
+        cardTop.appendChild(h("span",{style:{flex:"1",fontSize:"11.5px",color:"#CBD5E1",lineHeight:"1.4"}},item.refined||item.text));
+        card.appendChild(cardTop);
+        const btns=h("div",{style:{display:"flex",gap:"3px"}});
+        [{k:"done",l:"Done ✓",bg:"#00E5A0"},{k:"keep",l:"Keep",bg:"#7B93DB"},{k:"park",l:"Park",bg:"#A78BFA"},{k:"kill",l:"Kill",bg:"#E06C75"}].forEach(o=>{
+          btns.appendChild(h("button",{onClick:()=>{state.rDec[item.id]=o.k;render()},style:{padding:"3px 9px",borderRadius:"16px",border:"none",cursor:"pointer",fontSize:"9px",fontWeight:dec===o.k?"600":"400",background:dec===o.k?o.bg:"#334155",color:dec===o.k?"#111827":"#64748B"}},o.l));
+        });
+        card.appendChild(btns);content.appendChild(card);
+      });
+      if(s.rItems.length>0){
+        const allDecided=Object.keys(s.rDec).length>=s.rItems.length;
+        const finBar=h("div",{style:{marginTop:"10px",display:"flex",gap:"6px",alignItems:"center"}});
+        finBar.appendChild(h("button",{disabled:!allDecided,onClick:async()=>{
+          const killed=[];
+          for(const[id,d]of Object.entries(s.rDec)){
+            const item=s.items.find(i=>i.id===id);if(!item)continue;
+            if(d==="done"){item.done=true;await saveItem(item)}
+            else if(d==="kill"){killed.push({...item,killedAt:Date.now()});await state.sb.from("sb_items").delete().eq("id",id);state.items=state.items.filter(i=>i.id!==id)}
+            else if(d==="park"){item.category="parking";await saveItem(item)}
+            else if(d==="keep"){item.rs=(item.rs||0)+1;await saveItem(item)}
+          }
+          state.meta.graveyard=[...killed,...(state.meta.graveyard||[])].slice(0,50);await saveMeta();
+          set({rStep:3});
+        },style:{padding:"7px 18px",borderRadius:"8px",border:"none",fontSize:"11px",fontWeight:"600",background:allDecided?"#F0883E":"#334155",color:allDecided?"#111827":"#475569",cursor:allDecided?"pointer":"not-allowed"}},"Prioritize →"));
+        finBar.appendChild(h("span",{style:{fontSize:"9px",color:"#475569",fontFamily:"'JetBrains Mono',monospace"}},Object.keys(s.rDec).length+"/"+s.rItems.length));
+        content.appendChild(finBar);
+      }
+    }
+
+    if(s.rStep===3){
+      content.appendChild(h("p",{style:{color:"#475569",fontSize:"10px",marginBottom:"10px"}},"Set priorities: ● low ●● med ●●● high"));
+      s.items.filter(i=>i.category==="todo"&&!i.done).sort((a,b)=>(b.priority||0)-(a.priority||0)).forEach(item=>{
+        const row=h("div",{style:{display:"flex",alignItems:"center",gap:"6px",padding:"7px 9px",borderBottom:"1px solid #1E293B"}});
+        const dots=h("div",{style:{display:"flex",gap:"2px"}});
+        [1,2,3].forEach(p=>{dots.appendChild(h("button",{onClick:()=>setPriItem(item.id,p),style:{width:"7px",height:"7px",borderRadius:"50%",border:"none",cursor:"pointer",background:(item.priority||0)>=p?PRI[p].c:"#334155"}}))});
+        row.appendChild(dots);
+        row.appendChild(h("span",{style:{flex:"1",fontSize:"11.5px",color:"#CBD5E1"}},item.refined||item.text));
+        content.appendChild(row);
+      });
+      content.appendChild(h("button",{onClick:async()=>{
+        state.meta.reviewHistory=[...(state.meta.reviewHistory||[]),{date:Date.now(),n:Object.keys(s.rDec).length}];await saveMeta();
+        set({rightTab:"calendar",rStep:0,digest:null});fl("Review complete.");
+      },style:{marginTop:"12px",padding:"7px 18px",background:"#00E5A0",border:"none",borderRadius:"8px",color:"#111827",fontSize:"11px",fontWeight:"600",cursor:"pointer"}},"Finish ✓"));
+    }
+  }
+
+  right.appendChild(content);
+  wrap.appendChild(right);
+  app.appendChild(wrap);
+
+  // Re-focus textarea
+  const taEl=app.querySelector("textarea");
+  if(taEl&&document.activeElement!==taEl&&s.txt)taEl.value=s.txt;
+}
+
+// ─── INIT ───
+initSupabase();
+</script>
+</body>
+</html>
