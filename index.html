@@ -192,7 +192,7 @@ async function aiCall(system,userMsg,maxTokens=2000){
   try{
     const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
       headers:{"Content-Type":"application/json","x-api-key":state.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:maxTokens,system,messages:[{role:"user",content:userMsg}]})
+      body:JSON.stringify({model:"claude-3-5-sonnet-20241022",max_tokens:maxTokens,system,messages:[{role:"user",content:userMsg}]})
     });
     const d=await r.json();
     if(d.error)throw new Error(d.error.message);
@@ -270,7 +270,7 @@ async function aiChat(userMsg){
   try{
     const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",
       headers:{"Content-Type":"application/json","x-api-key":state.apiKey,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:800,system:sys,messages:msgs})
+      body:JSON.stringify({model:"claude-3-5-sonnet-20241022",max_tokens:800,system:sys,messages:msgs})
     });const d=await r.json();return d.content?.map(c=>c.text||"").join("")||"No response";
   }catch{return"AI unavailable"}
 }
