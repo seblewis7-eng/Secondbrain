@@ -408,13 +408,14 @@ function render(){
           h("b",null,"Step 4:"),` Get your Anthropic API key from console.anthropic.com`,
         ),
         h("label",null,"Supabase URL"),
-        h("input",{value:s.supaUrl,placeholder:"https://xxxxx.supabase.co",onInput:e=>state.supaUrl=e.target.value}),
+        h("input",{value:s.supaUrl,placeholder:"https://xxxxx.supabase.co",onInput:e=>{state.supaUrl=e.target.value;const btn=e.target.closest('.setup-box').querySelector('button');if(btn)btn.disabled=!state.supaUrl||!state.supaKey}}),
         h("label",null,"Supabase Anon Key"),
-        h("input",{value:s.supaKey,placeholder:"eyJhbGci...",onInput:e=>state.supaKey=e.target.value}),
+        h("input",{value:s.supaKey,placeholder:"eyJhbGci...",onInput:e=>{state.supaKey=e.target.value;const btn=e.target.closest('.setup-box').querySelector('button');if(btn)btn.disabled=!state.supaUrl||!state.supaKey}}),
         h("label",null,"Anthropic API Key"),
-        h("input",{value:s.apiKey,placeholder:"sk-ant-...",onInput:e=>state.apiKey=e.target.value}),
+        h("input",{value:s.apiKey,placeholder:"sk-ant-...",onInput:e=>{state.apiKey=e.target.value}}),
         s.setupErr?h("div",{className:"err"},s.setupErr):null,
-        h("button",{disabled:!s.supaUrl||!s.supaKey,onClick:()=>{
+        h("button",{onClick:()=>{
+          if(!state.supaUrl||!state.supaKey){return}
           localStorage.setItem("sb_url",state.supaUrl);
           localStorage.setItem("sb_key",state.supaKey);
           localStorage.setItem("sb_api_key",state.apiKey);
