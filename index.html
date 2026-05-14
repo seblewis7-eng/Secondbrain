@@ -569,6 +569,11 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
       row.appendChild(h("span",null,e.text));
       sb.appendChild(row);
     });
+    const carryForward=s.items.filter(i=>i.category==="todo"&&!i.done);
+    if(carryForward.length>0){
+      sb.appendChild(h("div",{style:{fontSize:"9px",color:"#00E5A0",fontFamily:"'JetBrains Mono',monospace",marginTop:"6px",marginBottom:"3px",letterSpacing:"1px"}},"CARRY-FORWARD"));
+      carryForward.slice(0,4).forEach(i=>{sb.appendChild(h("div",{style:{fontSize:"10px",color:"#64748B",padding:"1px 0"}},"◆ "+(i.refined||i.text)))});
+    }
     left.appendChild(sb);
   }
 
@@ -648,6 +653,34 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
   // Tab content area
   const content=h("div",{style:{flex:"1",padding:mob?"12px 10px":"14px 14px",overflowY:"auto"}});
 
+  // ── CONVERSATION MODE ──
+  if(s.rightTab==="chat"&&s.chatItem){
+    const ci=s.chatItem;
+    const chatWrap=h("div",{style:{display:"flex",flexDirection:"column",height:"100%"}});
+    // Item context
+    const ciBox=h("div",{style:{padding:"8px 10px",background:"#1E293B",borderRadius:"8px",marginBottom:"10px",border:"1px solid #334155"}});
+    ciBox.appendChild(h("div",{style:{fontSize:"9px",color:CATS[ci.category]?.c||"#64748B",fontFamily:"'JetBrains Mono',monospace",marginBottom:"3px"}},CATS[ci.category]?.l||"Item"));
+    ciBox.appendChild(h("div",{style:{fontSize:"12px",color:"#F1F5F9"}},ci.refined||ci.text));
+    chatWrap.appendChild(ciBox);
+    // Messages
+    const msgArea=h("div",{style:{flex:"1",overflowY:"auto",marginBottom:"8px"}});
+    if(s.chatHistory.length===0)msgArea.appendChild(h("p",{style:{color:"#475569",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"Ask anything — brainstorm, challenge, plan next steps."));
+    s.chatHistory.forEach(msg=>{
+      const msgEl=h("div",{style:{padding:"8px 10px",marginBottom:"4px",borderRadius:"8px",background:msg.role==="user"?"#00E5A010":"#1E293B",borderLeft:`2px solid ${msg.role==="user"?"#00E5A044":"#64748B33"}`}});
+      msgEl.appendChild(h("div",{style:{fontSize:"8px",color:msg.role==="user"?"#00E5A0":"#64748B",fontFamily:"'JetBrains Mono',monospace",marginBottom:"3px"}},msg.role==="user"?"YOU":"AI"));
+      msgEl.appendChild(h("div",{style:{fontSize:"12px",color:"#CBD5E1",lineHeight:"1.6",whiteSpace:"pre-wrap"}},msg.content));
+      msgArea.appendChild(msgEl);
+    });
+    if(s.chatLoading)msgArea.appendChild(h("div",{style:{fontSize:"11px",color:"#64748B",padding:"8px 10px"}},"Thinking..."));
+    chatWrap.appendChild(msgArea);
+    // Input
+    const chatBar=h("div",{style:{display:"flex",gap:"4px"}});
+    chatBar.appendChild(h("input",{value:s.chatInput,placeholder:"Ask about this...",onInput:e=>{state.chatInput=e.target.value},onKeydown:async e=>{if(e.key==="Enter"&&s.chatInput.trim()&&!s.chatLoading){const msg=state.chatInput;state.chatInput="";state.chatHistory.push({role:"user",content:msg});state.chatLoading=true;render();const reply=await aiChat(msg);state.chatHistory.push({role:"assistant",content:reply});state.chatLoading=false;render()}},style:{flex:"1",padding:"8px 10px",background:"#1E293B",border:"1px solid #334155",borderRadius:"6px",color:"#F1F5F9",fontSize:"12px",outline:"none"}}));
+    chatBar.appendChild(h("button",{onClick:async()=>{if(!s.chatInput.trim()||s.chatLoading)return;const msg=state.chatInput;state.chatInput="";state.chatHistory.push({role:"user",content:msg});state.chatLoading=true;render();const reply=await aiChat(msg);state.chatHistory.push({role:"assistant",content:reply});state.chatLoading=false;render()},style:{padding:"8px 14px",background:s.chatInput.trim()?"#00E5A0":"#334155",color:s.chatInput.trim()?"#111827":"#475569",border:"none",borderRadius:"6px",fontSize:"11px",fontWeight:"600",cursor:s.chatInput.trim()?"pointer":"default"}},"Send"));
+    chatWrap.appendChild(chatBar);
+    content.appendChild(chatWrap);
+  }
+
   // ── CALENDAR TAB ──
   if(s.rightTab==="calendar"){
     // Week nav
@@ -709,14 +742,47 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
       [1,2,3].forEach(p=>{dots.appendChild(h("button",{onClick:()=>setPriItem(item.id,p),style:{width:"6px",height:"6px",borderRadius:"50%",border:"none",cursor:"pointer",background:(item.priority||0)>=p?PRI[p].c:"#334155"}}))});
       row.appendChild(dots);
       const info=h("div",{style:{flex:"1",minWidth:"0"}});
-      info.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{fontSize:"12.5px",color:item.done?"#475569":"#CBD5E1",textDecoration:item.done?"line-through":"none",cursor:"pointer",lineHeight:"1.5",wordBreak:"break-word"}},item.refined||item.text));
+      if(s.editId===item.id){
+        const editRow=h("div",{style:{display:"flex",gap:"3px"}});
+        const editInput=h("input",{value:s.editTxt,onInput:e=>{state.editTxt=e.target.value},onKeydown:e=>{if(e.key==="Enter")saveEditItem();if(e.key==="Escape")set({editId:null})},style:{flex:"1",padding:"3px 6px",background:"#111827",border:"1px solid #00E5A044",borderRadius:"3px",color:"#F1F5F9",fontSize:"12px",fontFamily:"inherit"}});
+        editRow.appendChild(editInput);
+        editRow.appendChild(h("button",{onClick:saveEditItem,style:{padding:"3px 8px",background:"#00E5A0",border:"none",borderRadius:"3px",color:"#111827",fontSize:"9px",cursor:"pointer",fontWeight:"600"}},"✓"));
+        info.appendChild(editRow);
+      } else {
+        info.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{fontSize:"12.5px",color:item.done?"#475569":"#CBD5E1",textDecoration:item.done?"line-through":"none",cursor:"pointer",lineHeight:"1.5",wordBreak:"break-word"}},item.refined||item.text));
+      }
+      // Original text
+      if(item.refined&&item.refined!==item.text)info.appendChild(h("div",{style:{fontSize:"9px",color:"#334155",fontStyle:"italic",marginTop:"1px"}},'"'+(item.text||"").slice(0,50)+(item.text.length>50?"…":"")+'"'));
       const meta=h("div",{style:{display:"flex",gap:"4px",marginTop:"2px",alignItems:"center",flexWrap:"wrap"}});
       meta.appendChild(h("span",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},new Date(item.created).toLocaleDateString()));
       if(item.project_id)meta.appendChild(h("span",{style:{fontSize:"8px",color:projColor(item.project_id),fontFamily:"'JetBrains Mono',monospace",background:projColor(item.project_id)+"15",padding:"0 5px",borderRadius:"8px"}},projName(item.project_id)));
       if(isG)meta.appendChild(h("span",{style:{fontSize:"8px",color:"#E06C75"}},"👻"+daysAgo(item.created)+"d"));
+      if(item.priority>0)meta.appendChild(h("span",{style:{fontSize:"8px",color:PRI[item.priority].c}},PRI[item.priority].l));
+      // Linked items
+      const linked=findLinked(item,s.items);
+      if(linked.length>0)meta.appendChild(h("span",{style:{fontSize:"8px",color:"#475569"}},"🔗"+linked.length));
+      // Contradictions
+      const contras=findContras(item,s.items);
+      if(contras.length>0)meta.appendChild(h("span",{style:{fontSize:"8px",color:"#E06C75"}},"⚡ tension"));
       info.appendChild(meta);
       row.appendChild(info);
-      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      // Controls
+      const ctrls=h("div",{style:{display:"flex",gap:"2px",flexShrink:"0",alignItems:"center"}});
+      // Chat button
+      ctrls.appendChild(h("button",{onClick:()=>{state.chatItem=item;state.chatHistory=[];state.chatInput="";set({rightTab:"chat"})},style:{padding:"2px 6px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#64748B",fontSize:"8px",cursor:"pointer"}},"💬"));
+      // Category selector
+      const catSel=h("select",{value:item.category,onChange:e=>{recatItem(item.id,e.target.value)},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"8px",padding:"1px 2px",cursor:"pointer",maxWidth:"44px"}});
+      Object.entries(CATS).forEach(([k,v])=>{const o=h("option",{value:k},v.l);if(k===item.category)o.selected=true;catSel.appendChild(o)});
+      ctrls.appendChild(catSel);
+      // Project selector
+      if(s.projects.length>0){
+        const pSel=h("select",{value:item.project_id||"",onChange:async e=>{item.project_id=e.target.value||null;item.project_name=e.target.value?projName(e.target.value):null;await saveItem(item);render()},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"7px",padding:"1px 1px",cursor:"pointer",maxWidth:"40px"}});
+        const noOpt=h("option",{value:""},"—");pSel.appendChild(noOpt);
+        s.projects.forEach(p=>{const o=h("option",{value:p.id},p.name);if(item.project_id===p.id)o.selected=true;pSel.appendChild(o)});
+        ctrls.appendChild(pSel);
+      }
+      ctrls.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      row.appendChild(ctrls);
       content.appendChild(row);
     });
   }
@@ -724,15 +790,81 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
   // ── IDEAS TAB ──
   else if(s.rightTab==="idea"){
     const ideas=filtered("idea");
+    // Header with collide
+    const ideaHeader=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}});
+    ideaHeader.appendChild(h("span",{style:{fontSize:"10px",color:"#64748B"}},ideas.length+" ideas"));
+    ideaHeader.appendChild(h("button",{onClick:()=>{
+      const pool=s.items.filter(i=>["idea","memory","parking","dump"].includes(i.category));
+      if(pool.length<2){fl("Need 2+ entries");return}
+      let a,b;do{a=pool[Math.floor(Math.random()*pool.length)];b=pool[Math.floor(Math.random()*pool.length)]}while(a.id===b.id);
+      set({collision:[a,b]});
+    },style:{padding:"3px 10px",border:"1px solid #FFB34733",borderRadius:"16px",color:"#FFB347",fontSize:"9px",cursor:"pointer",background:"transparent"}},"⚡ collide"));
+    content.appendChild(ideaHeader);
+
+    // Collision display
+    if(s.collision){
+      const colBox=h("div",{style:{padding:"10px",background:"#1E293B",borderRadius:"8px",marginBottom:"10px",border:"1px solid #FFB34720"}});
+      colBox.appendChild(h("div",{style:{fontSize:"9px",color:"#FFB347",fontFamily:"'JetBrains Mono',monospace",marginBottom:"6px",letterSpacing:"1.5px"}},"WHAT IF?"));
+      s.collision.forEach(it=>{
+        const card=h("div",{style:{padding:"8px",background:"#111827",borderRadius:"6px",border:"1px solid #334155",marginBottom:"4px"}});
+        card.appendChild(h("p",{style:{fontSize:"11px",color:"#CBD5E1",lineHeight:"1.5"}},it.refined||it.text));
+        colBox.appendChild(card);
+      });
+      const colBtns=h("div",{style:{display:"flex",gap:"4px",marginTop:"4px"}});
+      colBtns.appendChild(h("button",{onClick:()=>{const pool=s.items.filter(i=>["idea","memory","parking","dump"].includes(i.category));if(pool.length<2)return;let a,b;do{a=pool[Math.floor(Math.random()*pool.length)];b=pool[Math.floor(Math.random()*pool.length)]}while(a.id===b.id);set({collision:[a,b]})},style:{padding:"3px 10px",background:"#FFB347",border:"none",borderRadius:"16px",color:"#111827",fontSize:"10px",fontWeight:"600",cursor:"pointer"}},"Again"));
+      colBtns.appendChild(h("button",{onClick:()=>set({collision:null}),style:{padding:"3px 10px",border:"1px solid #334155",borderRadius:"16px",color:"#475569",fontSize:"10px",cursor:"pointer",background:"transparent"}},"×"));
+      colBox.appendChild(colBtns);
+      content.appendChild(colBox);
+    }
+
     if(ideas.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"No ideas yet"));
     ideas.forEach(item=>{
       const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
-      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5",wordBreak:"break-word"}},item.refined||item.text));
-      const meta=h("div",{style:{display:"flex",gap:"4px",marginTop:"3px",alignItems:"center"}});
-      meta.appendChild(h("span",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},new Date(item.created).toLocaleDateString()));
-      if(item.project_id)meta.appendChild(h("span",{style:{fontSize:"8px",color:projColor(item.project_id),background:projColor(item.project_id)+"15",padding:"0 5px",borderRadius:"8px"}},projName(item.project_id)));
+      row.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5",wordBreak:"break-word",cursor:"pointer"}},item.refined||item.text));
+      // Original text
+      if(item.refined&&item.refined!==item.text)row.appendChild(h("div",{style:{fontSize:"9px",color:"#334155",fontStyle:"italic",marginTop:"1px"}},'"'+(item.text||"").slice(0,50)+(item.text.length>50?"…":"")+'"'));
+      const meta=h("div",{style:{display:"flex",gap:"4px",marginTop:"3px",alignItems:"center",justifyContent:"space-between"}});
+      const metaLeft=h("div",{style:{display:"flex",gap:"4px",alignItems:"center"}});
+      metaLeft.appendChild(h("span",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},new Date(item.created).toLocaleDateString()));
+      if(item.project_id)metaLeft.appendChild(h("span",{style:{fontSize:"8px",color:projColor(item.project_id),background:projColor(item.project_id)+"15",padding:"0 5px",borderRadius:"8px"}},projName(item.project_id)));
+      // Linked items
+      const linked=findLinked(item,s.items);
+      if(linked.length>0)metaLeft.appendChild(h("span",{style:{fontSize:"8px",color:"#475569"}},"🔗"+linked.length+" linked"));
+      // Contradictions
+      const contras=findContras(item,s.items);
+      if(contras.length>0)metaLeft.appendChild(h("span",{style:{fontSize:"8px",color:"#E06C75"}},"⚡ tension"));
+      meta.appendChild(metaLeft);
+      const ctrls=h("div",{style:{display:"flex",gap:"2px",alignItems:"center"}});
+      // Expand button
+      const isExpanded=s.openExpansions[item.id];
+      ctrls.appendChild(h("button",{onClick:async()=>{
+        if(s.ideaExpansion[item.id]){state.openExpansions[item.id]=!state.openExpansions[item.id];render();return}
+        state.expandingIdea=item.id;render();
+        const exp=await aiExpandIdea(item.refined||item.text);
+        if(exp){state.ideaExpansion[item.id]=exp;state.openExpansions[item.id]=true}
+        state.expandingIdea=null;render();
+      },style:{padding:"2px 6px",background:isExpanded?"#FFB34712":"transparent",border:`1px solid ${s.ideaExpansion[item.id]?"#FFB34744":"#334155"}`,borderRadius:"10px",color:"#FFB347",fontSize:"8px",cursor:s.expandingIdea===item.id?"wait":"pointer",opacity:s.expandingIdea===item.id?".5":"1"}},s.expandingIdea===item.id?"...":(isExpanded?"▾":"expand")));
+      // Chat button
+      ctrls.appendChild(h("button",{onClick:()=>{state.chatItem=item;state.chatHistory=[];state.chatInput="";set({rightTab:"chat"})},style:{padding:"2px 6px",background:"transparent",border:"1px solid #334155",borderRadius:"10px",color:"#64748B",fontSize:"8px",cursor:"pointer"}},"💬"));
+      const catSel=h("select",{onChange:e=>{recatItem(item.id,e.target.value)},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"8px",padding:"1px 2px",cursor:"pointer",maxWidth:"44px"}});
+      Object.entries(CATS).forEach(([k,v])=>{const o=h("option",{value:k},v.l);if(k===item.category)o.selected=true;catSel.appendChild(o)});
+      ctrls.appendChild(catSel);
+      ctrls.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      meta.appendChild(ctrls);
       row.appendChild(meta);
-      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+
+      // Expansion display
+      const exp=s.ideaExpansion[item.id];
+      if(exp&&isExpanded){
+        const expBox=h("div",{style:{marginTop:"8px",padding:"10px 12px",background:"#1E293B",borderRadius:"8px",border:"1px solid #FFB34712"}});
+        expBox.appendChild(h("p",{style:{fontSize:"12px",color:"#CBD5E1",lineHeight:"1.6",marginBottom:"6px"}},exp.concept));
+        expBox.appendChild(h("div",{style:{fontSize:"10px",color:"#64748B",marginBottom:"3px"}},"For: "+exp.audience));
+        if(exp.steps)(exp.steps).forEach((st,i)=>{expBox.appendChild(h("div",{style:{fontSize:"11px",color:"#94A3B8",padding:"2px 0 2px 10px",borderLeft:"1px solid #334155"}},(i+1)+". "+st))});
+        if(exp.challenges)(exp.challenges).forEach(c=>{expBox.appendChild(h("div",{style:{fontSize:"11px",color:"#94A3B8",padding:"2px 0 2px 10px",borderLeft:"1px solid #E06C7522",marginTop:"2px"}},"· "+c))});
+        if(exp.potential)expBox.appendChild(h("p",{style:{fontSize:"10px",color:"#FFB347",marginTop:"6px",opacity:".7"}},exp.potential));
+        row.appendChild(expBox);
+      }
+
       content.appendChild(row);
     });
   }
@@ -742,15 +874,27 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
     const mems=filtered("memory");const unsorted=filtered("dump");
     if(mems.length===0&&unsorted.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"No memories"));
     mems.forEach(item=>{
-      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
-      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5"}},item.refined||item.text));
-      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}});
+      row.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{flex:"1",fontSize:"12.5px",color:"#CBD5E1",lineHeight:"1.5",cursor:"pointer"}},item.refined||item.text));
+      const ctrls=h("div",{style:{display:"flex",gap:"2px",flexShrink:"0",alignItems:"center"}});
+      const catSel=h("select",{onChange:e=>{recatItem(item.id,e.target.value)},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"8px",padding:"1px 2px",cursor:"pointer",maxWidth:"44px"}});
+      Object.entries(CATS).forEach(([k,v])=>{const o=h("option",{value:k},v.l);if(k===item.category)o.selected=true;catSel.appendChild(o)});
+      ctrls.appendChild(catSel);
+      ctrls.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      row.appendChild(ctrls);
       content.appendChild(row);
     });
     if(unsorted.length>0){
       content.appendChild(h("div",{style:{fontSize:"9px",color:"#475569",fontFamily:"'JetBrains Mono',monospace",margin:"10px 0 4px",letterSpacing:"1.5px"}},"UNSORTED"));
       unsorted.forEach(item=>{
-        const row=h("div",{style:{padding:"6px 10px",borderBottom:"1px solid #1E293B",fontSize:"12px",color:"#94A3B8"}},item.refined||item.text);
+        const row=h("div",{style:{padding:"6px 10px",borderBottom:"1px solid #1E293B",display:"flex",justifyContent:"space-between",alignItems:"center"}});
+        row.appendChild(h("span",{style:{flex:"1",fontSize:"12px",color:"#94A3B8"}},item.refined||item.text));
+        const ctrls=h("div",{style:{display:"flex",gap:"2px",flexShrink:"0",alignItems:"center"}});
+        const catSel=h("select",{onChange:e=>{recatItem(item.id,e.target.value)},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"8px",padding:"1px 2px",cursor:"pointer",maxWidth:"44px"}});
+        Object.entries(CATS).forEach(([k,v])=>{const o=h("option",{value:k},v.l);if(k===item.category)o.selected=true;catSel.appendChild(o)});
+        ctrls.appendChild(catSel);
+        ctrls.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+        row.appendChild(ctrls);
         content.appendChild(row);
       });
     }
@@ -761,9 +905,14 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
     const parked=filtered("parking");
     if(parked.length===0)content.appendChild(h("p",{style:{color:"#334155",fontSize:"11px",textAlign:"center",padding:"20px 0"}},"Nothing parked"));
     parked.forEach(item=>{
-      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B"}});
-      row.appendChild(h("span",{style:{fontSize:"12.5px",color:"#CBD5E1"}},item.refined||item.text));
-      row.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{float:"right",background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      const row=h("div",{style:{padding:"9px 10px",borderBottom:"1px solid #1E293B",display:"flex",justifyContent:"space-between",alignItems:"flex-start"}});
+      row.appendChild(h("span",{onClick:()=>set({editId:item.id,editTxt:item.refined||item.text}),style:{flex:"1",fontSize:"12.5px",color:"#CBD5E1",cursor:"pointer"}},item.refined||item.text));
+      const ctrls=h("div",{style:{display:"flex",gap:"2px",flexShrink:"0",alignItems:"center"}});
+      const catSel=h("select",{onChange:e=>{recatItem(item.id,e.target.value)},style:{background:"#1E293B",border:"1px solid #334155",borderRadius:"3px",color:"#64748B",fontSize:"8px",padding:"1px 2px",cursor:"pointer",maxWidth:"44px"}});
+      Object.entries(CATS).forEach(([k,v])=>{const o=h("option",{value:k},v.l);if(k===item.category)o.selected=true;catSel.appendChild(o)});
+      ctrls.appendChild(catSel);
+      ctrls.appendChild(h("button",{onClick:()=>deleteItem(item.id),style:{background:"none",border:"none",color:"#334155",cursor:"pointer",fontSize:"12px"}},"×"));
+      row.appendChild(ctrls);
       content.appendChild(row);
     });
   }
@@ -830,6 +979,16 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
     }
 
     if(s.rStep===1){
+      // Accountability mirror
+      const survivalKings=s.items.filter(i=>i.category==="todo"&&!i.done&&(i.rs||0)>=3);
+      const staleIdeas=s.items.filter(i=>i.category==="idea"&&daysAgo(i.created)>=21);
+      if(survivalKings.length>0||staleIdeas.length>0){
+        const mirror=h("div",{style:{padding:"8px 10px",background:"#1E293B",borderRadius:"6px",marginBottom:"10px",border:"1px solid #334155"}});
+        mirror.appendChild(h("div",{style:{fontSize:"9px",color:"#F0883E",fontFamily:"'JetBrains Mono',monospace",marginBottom:"4px",letterSpacing:"1.5px"}},"MIRROR"));
+        if(survivalKings.length>0)mirror.appendChild(h("p",{style:{fontSize:"10px",color:"#94A3B8",marginBottom:"2px"}},"→ "+survivalKings.length+" task"+(survivalKings.length>1?"s":"")+" survived 3+ reviews"));
+        if(staleIdeas.length>0)mirror.appendChild(h("p",{style:{fontSize:"10px",color:"#94A3B8"}},"→ "+staleIdeas.length+" stale idea"+(staleIdeas.length>1?"s":"")));
+        content.appendChild(mirror);
+      }
       content.appendChild(h("p",{style:{color:"#475569",fontSize:"10px",marginBottom:"8px"}},s.rItems.length+" items"));
       s.rItems.forEach(item=>{
         const dec=s.rDec[item.id];
@@ -861,6 +1020,13 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
         },style:{padding:"7px 18px",borderRadius:"8px",border:"none",fontSize:"11px",fontWeight:"600",background:allDecided?"#F0883E":"#334155",color:allDecided?"#111827":"#475569",cursor:allDecided?"pointer":"not-allowed"}},"Prioritize →"));
         finBar.appendChild(h("span",{style:{fontSize:"9px",color:"#475569",fontFamily:"'JetBrains Mono',monospace"}},Object.keys(s.rDec).length+"/"+s.rItems.length));
         content.appendChild(finBar);
+      }
+      // Graveyard
+      if((s.meta.graveyard||[]).length>0){
+        const gyard=h("details",{style:{marginTop:"12px"}});
+        gyard.appendChild(h("summary",{style:{fontSize:"8px",color:"#334155",fontFamily:"'JetBrains Mono',monospace",cursor:"pointer",letterSpacing:"1.5px"}},"GRAVEYARD · "+s.meta.graveyard.length));
+        (s.meta.graveyard||[]).slice(0,8).forEach(g=>{gyard.appendChild(h("div",{style:{padding:"2px 8px",fontSize:"9px",color:"#334155",borderLeft:"1px solid #334155",marginTop:"2px",textDecoration:"line-through"}},g.text||g.refined||"?"))});
+        content.appendChild(gyard);
       }
     }
 
