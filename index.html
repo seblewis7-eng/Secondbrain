@@ -222,17 +222,29 @@ CALENDAR:\n${calCtx||"(empty)"}
 PROJECTS:\n${projCtx||"(none)"}
 
 Return ONLY JSON array. One line can produce MULTIPLE items. Each:
-- "source_line": number, "original": text, "category": "todo"|"idea"|"memory"|"parking"|"calendar"|"dump"
-- "project": project name or null, "refined": rewritten per rules, "confidence": 0-1
+- "source_line": number, "original": original text verbatim
+- "category": "todo"|"idea"|"memory"|"parking"|"calendar"|"dump"
+- "project": project name or null
+- "refined": MANDATORY SHORT VERSION — see rules below. NEVER copy the original text as-is.
+- "confidence": 0-1
 - "auto_done": true only for completed todos in debrief. Default false.
-- "calendar": only if calendar. {"dates":["YYYY-MM-DD"],"time":"HH:MM" or null,"recurring":"weekly" or null,"activity":"text"}
+- "calendar": REQUIRED if category is "calendar". MUST include: {"dates":["YYYY-MM-DD"],"time":"HH:MM" or null,"recurring":"weekly" or null,"activity":"short activity name"}. "tomorrow" = next day from today. Day names = next occurrence of that day.
 - "schedule_suggestion": for time-sensitive todos. {"suggested_date":"YYYY-MM-DD","suggested_time":"HH:MM" or null,"reasoning":"5-10 words"}
-${REFINE_RULES}
+
+CRITICAL REFINEMENT RULES — the "refined" field must be DRAMATICALLY shorter than the original:
+• todo: Start with a VERB. MAX 8 WORDS. "Call dentist tomorrow" / "Finish pitch deck by Wed" / "Organise Dr appt for Jacques"
+• idea: Core concept ONLY, 3-8 words. "Mini projector calendar planner"
+• memory: Insight-first, max 8 words. "Shorter reels get more saves"
+• parking: Clean future statement, max 8 words. "Build home gym"
+• calendar: Activity ONLY, max 5 words. "Dr appt with Jacques" / "Gym session" / "Bunnings run"
+• dump: Clean short version, max 8 words.
+NEVER keep the original long text. ALWAYS rewrite shorter.
+
 MULTI-SIGNAL: split multi-action sentences. CONTEXT-AWARE: resolve references using history.
-ONLY the JSON array.`;
+ONLY the JSON array, no other text.`;
   const raw=await aiCall(sys,lines.map((l,i)=>`${i+1}. ${l}`).join("\n"),3000);
-  if(!raw)return null;
-  try{return JSON.parse(raw.replace(/```json|```/g,"").trim())}catch{return null}
+  if(!raw){console.error("AI returned null");return null}
+  try{const parsed=JSON.parse(raw.replace(/```json|```/g,"").trim());console.log("AI response:",parsed);return parsed}catch(e){console.error("AI parse error:",raw);return null}
 }
 
 async function aiExpandIdea(text){
@@ -300,6 +312,17 @@ async function handleDump(){
             const evt={id:uid(),text:activity,date:dt,time:cal.time||null,recurring:false,day_of_week:null};
             newEvents.push(evt);calAdded++;
           }
+        }
+      }else if(cat==="calendar"&&!r.calendar){
+        // Fallback: AI said calendar but didn't provide dates — try to parse "tomorrow"
+        const lo=(orig||"").toLowerCase();
+        let fallbackDate=null;
+        if(lo.includes("tomorrow")){const tm=new Date();tm.setDate(tm.getDate()+1);fallbackDate=isoDate(tm)}
+        else if(lo.includes("today"))fallbackDate=todayStr;
+        else{const days=["monday","tuesday","wednesday","thursday","friday","saturday","sunday"];for(let d=0;d<days.length;d++){if(lo.includes(days[d])){const now=new Date();const target=d+1;const curr=now.getDay()||7;let diff=target-curr;if(diff<=0)diff+=7;now.setDate(now.getDate()+diff);fallbackDate=isoDate(now);break}}}
+        if(fallbackDate){
+          const evt={id:uid(),text:r.refined||orig,date:fallbackDate,time:null,recurring:false,day_of_week:null};
+          newEvents.push(evt);calAdded++;
         }
       }else if(cat==="todo"&&!isDone&&r.schedule_suggestion){
         const ss=r.schedule_suggestion;
