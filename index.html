@@ -275,6 +275,9 @@ const projStats=pid=>{const pi=state.items.filter(i=>i.project_id===pid);return{
 const streak=()=>{let c=0,d=new Date();const sd=state.meta.streakDays||[];while(true){const s=isoDate(d);if(sd.includes(s)){c++;d.setDate(d.getDate()-1)}else if(c===0&&s===todayStr){d.setDate(d.getDate()-1)}else break}return c};
 
 async function handleDump(){
+  // Read directly from textarea DOM in case state.txt is stale
+  const taEl=document.querySelector("textarea");
+  if(taEl&&taEl.value.trim())state.txt=taEl.value;
   if(!state.txt.trim()||state.processing)return;
   const lines=state.txt.split("\n").filter(l=>l.trim()).map(l=>l.trim());
   set({processing:true,txt:""});
@@ -595,7 +598,7 @@ create policy "Users see own projects" on sb_projects for all using (auth.uid() 
   const procBar=h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:"8px"}});
   const modeDesc={dump:"Raw thoughts — AI sorts everything",setday:"Plan your day — actions & calendar",debrief:"Reflect — completions, carry-forwards"};
   procBar.appendChild(h("span",{style:{fontSize:"9px",color:"#334155",fontFamily:"'JetBrains Mono',monospace"}},modeDesc[s.dumpMode]));
-  procBar.appendChild(h("button",{onClick:handleDump,disabled:s.processing||!s.txt.trim(),style:{padding:"7px 24px",background:(!s.processing&&s.txt.trim())?"#00E5A0":"#334155",color:(!s.processing&&s.txt.trim())?"#111827":"#475569",border:"none",borderRadius:"8px",fontSize:"11px",fontWeight:"600",cursor:(!s.processing&&s.txt.trim())?"pointer":"default"}},s.processing?"Processing...":"Process"));
+  procBar.appendChild(h("button",{onClick:handleDump,style:{padding:"7px 24px",background:"#00E5A0",color:"#111827",border:"none",borderRadius:"8px",fontSize:"11px",fontWeight:"600",cursor:"pointer"}},s.processing?"Processing...":"Process"));
   taWrap.appendChild(procBar);
   left.appendChild(taWrap);
 
